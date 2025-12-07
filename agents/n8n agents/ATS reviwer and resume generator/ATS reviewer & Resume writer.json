@@ -1,0 +1,465 @@
+{
+  "name": "ATS reviewer & Resume writer",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "069d668c-ff20-4dfc-82be-63e8eff5bbc6",
+              "name": "resume_text",
+              "value": "SUMMARY Results-driven Data Analyst with 4+ years experience transforming messy data into clear, decision-ready insights. Expert in SQL (window functions, CTEs), Python (pandas, numpy), and dashboarding (Tableau, Power BI). Partnered with product, growth, and operations to design metrics, build reliable models, and automate reporting that reduced manual work by 40–60%.  CORE SKILLS • SQL (Postgres, BigQuery), Python (pandas, numpy), dbt, Airflow • Tableau, Power BI, Looker; data storytelling, executive-ready decks • Experiment design, uplift analysis, cohorting, retention • ETL/ELT pipelines, data quality monitoring, documentation  EXPERIENCE Acme Corp — Data Analyst (2021–2024) • Built a self-serve metrics layer (dbt) and Tableau dashboards used by 120+ stakeholders; cut ad-hoc requests by 45%. • Designed A/B test scorecards for pricing experiments; improved analysis time from 2 days to 2 hours. • Partnered with PMs to define North Star and guardrail metrics; authored the data dictionary and SLAs.  BrightLabs — Business Analyst (2019–2021) • Modeled funnel performance in SQL; identified a signup friction point and drove +8% conversion after UX changes. • Automated weekly revenue reporting (Python + BigQuery) with anomaly alerts; reduced missed issues by 70%.  EDUCATION B.Tech in Computer Science, First Class  CERTIFICATIONS Tableau Desktop Specialist, Google Data Analytics",
+              "type": "string"
+            },
+            {
+              "id": "245cd7c4-f7ba-4513-98b7-9ac840a98c85",
+              "name": "job_description",
+              "value": "We seek a Data Analyst to support product analytics and experimentation. Responsibilities include partnering with PMs to define metrics, building reliable SQL transformations, and producing dashboards for leadership consumption. The ideal candidate has strong SQL (CTEs, window functions), Python (pandas), visualization (Tableau/Power BI), and experience with A/B testing, data storytelling, and stakeholder communication. Nice-to-haves: dbt, BigQuery, Looker, Airflow, cohort analysis, retention metrics, and documentation best practices. Prior SaaS/product analytics experience preferred.",
+              "type": "string"
+            },
+            {
+              "id": "f01d07ae-88fd-4ab1-a4d5-2c32bd239369",
+              "name": "candidate_name",
+              "value": "Jane Doe",
+              "type": "string"
+            },
+            {
+              "id": "fcb4dde8-e68f-4d00-a2ee-bc7d7ecbfd46",
+              "name": "target_role",
+              "value": "Data Analyst”",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -416,
+        336
+      ],
+      "id": "979bc549-a57a-43a9-af89-6fe4e423800e",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalize(s=''){\n  return s\n    .replace(/[\\u200B-\\u200D\\uFEFF]/g,'')\n    .replace(/\\r/g,'')\n    .replace(/[•●▪■]/g,'•')\n    .replace(/\\t/g,'  ')\n    .replace(/ {3,}/g,'  ')\n    .replace(/\\n{3,}/g,'\\n\\n')\n    .trim();\n}\nconst resume_text = normalize($json.resume_text || '');\nconst job_description = normalize($json.job_description || '');\nreturn [{\n  ...$json,\n  resume_text,\n  job_description,\n  resume_len: resume_text.length,\n  jd_len: job_description.length\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        336
+      ],
+      "id": "713d2bfb-4bb8-4867-abd3-7c5b1bd72b2b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a613de80-3728-436b-b07e-ef22746ee4e4",
+              "leftValue": "={{$json.resume_len}}",
+              "rightValue": 500,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "43ff36bf-ca17-433a-8b0a-603cc08476b7",
+              "leftValue": "={{$json.jd_len}}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        32,
+        336
+      ],
+      "id": "aafaabf0-410f-4e7b-a355-e3592f0dfbf7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "throw new Error('422: Please supply structured resume_text (≥500 chars) and job_description (≥300 chars).');\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        432
+      ],
+      "id": "fd7bdd56-244d-4591-8947-368e0a426414",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an ATS evaluator that compares a candidate's resume with a job description and outputs results ONLY as valid JSON.\n\nScoring rubric (weights in parentheses):\n- title_alignment (20%)\n- skills_alignment (40%)\n- experience_relevance (30%)\n- formatting_readability (10%)\n\nYour task:\n1. Evaluate alignment across the above dimensions.\n2. Provide constructive feedback listing 2–4 \"strengths\" and 2–4 \"gaps\".\n3. Never include commentary outside the JSON.\n4. Return a VALID JSON object only, with this exact structure:\n\n{\n  \"ats_score\": number,\n  \"dimension_scores\": {\n    \"title_alignment\": number,\n    \"skills_alignment\": number,\n    \"experience_relevance\": number,\n    \"formatting_readability\": number\n  },\n  \"strengths\": [string],\n  \"gaps\": [string],\n  \"notes\": string\n}\n",
+              "role": "system"
+            },
+            {
+              "content": "=\n {{ $json.resume_text }}\n{{ $json.job_description }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        256,
+        240
+      ],
+      "id": "934677fe-2ce3-4023-87c0-55b9975241cf",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "x7Sqp0QnbYytkStI",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a professional resume writer. Rewrite the resume to achieve a 99–100 ATS match for the given job description.\n\nHARD RULES:\n- Keep the same section labels and order if present: SUMMARY, CORE SKILLS (or SKILLS), EXPERIENCE, EDUCATION, CERTIFICATIONS.\n- Use single-column, ATS-friendly plain text. Keep bullets '• '.\n- Do NOT fabricate employers, titles, dates, degrees, or certifications.\n- Only rephrase, reorganize, and emphasize truthful content aligned to the JD.\n- Avoid keyword stuffing (keyword density under 3%).\n- Output PLAIN TEXT ONLY (no markdown, no tables).\n",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.gaps }}\n{{ $('Edit Fields').item.json.job_description }}\n{{ $('Edit Fields').item.json.resume_text }}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        832,
+        240
+      ],
+      "id": "fb64c5bd-51d9-4372-bba7-87795ccad65d",
+      "name": "Tailor Resume",
+      "credentials": {
+        "openAiApi": {
+          "id": "x7Sqp0QnbYytkStI",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the model's JSON output\nconst text = $json.message?.content || '{}';\n\nlet parsed = {};\ntry {\n  parsed = JSON.parse(text);\n} catch (e) {\n  throw new Error('Could not parse ATS JSON output: ' + e.message + '\\n\\nReceived:\\n' + text);\n}\n\n// Return parsed fields for next node\nreturn [parsed];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        240
+      ],
+      "id": "1521d5f5-4bdd-496e-9ff3-f85e9c9f18bd",
+      "name": "Parse ATS JSON"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://docs.googleapis.com/v1/documents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $('If').item.json.candidate_name }},{{ $('If').item.json.target_role }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1184,
+        240
+      ],
+      "id": "632d1d9b-4ecb-4012-9d66-7736caff2861",
+      "name": "HTTP Request",
+      "credentials": {
+        "googleOAuth2Api": {
+          "id": "fcd50xn3vCIRFpEp",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://docs.googleapis.com/v1/documents/{{$json.documentId}}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ { \"requests\": [ { \"insertText\": { \"location\": { \"index\": 1 }, \"text\": $(\"Tailor Resume\").item.json.message.content } } ] } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        240
+      ],
+      "id": "89a447fb-01ec-4c74-a83d-fdb69832f67d",
+      "name": "HTTP Request1",
+      "credentials": {
+        "googleOAuth2Api": {
+          "id": "fcd50xn3vCIRFpEp",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const documentId = $json.documentId || $json.body?.documentId;\nconst documentUrl = $json.documentUrl || (documentId ? `https://docs.google.com/document/d/${documentId}/edit` : undefined);\n\nreturn [{\n  status: 'success',\n  ats_score: $json.ats_score,\n  dimension_scores: $json.dimension_scores,\n  strengths: $json.strengths,\n  gaps: $json.gaps,\n  doc_url: documentUrl,\n  tailored_resume_text: $json.tailored_resume_text\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        240
+      ],
+      "id": "cb8cdd91-bd7b-4651-8f15-fc72a316ea03",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 ATS Resume Reviewer & Writer\n\n**Purpose:** Analyzes resumes against job descriptions using AI, then generates optimized, ATS-friendly versions.\n\n**Inputs Required:**\n- resume_text (≥500 chars)\n- job_description (≥300 chars)\n- candidate_name\n- target_role\n\n**Output:** Google Doc with tailored resume + ATS scores",
+        "height": 304,
+        "width": 544,
+        "color": 4
+      },
+      "id": "1fb011d3-f7a0-4dff-96e4-ce838bdc86ba",
+      "name": "Overview Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        304,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📋 Step 1: Input Validation\n\n**Nodes:** Edit Fields → Code in JavaScript → If\n\n**What happens:**\n- Normalizes resume & JD text (removes special chars, standardizes bullets)\n- Calculates text lengths\n- Validates minimum requirements (resume ≥500, JD ≥300 chars)\n- Routes to error handler if validation fails",
+        "height": 316,
+        "width": 348,
+        "color": 5
+      },
+      "id": "94cd6202-ba27-49da-b719-a3b7bc021733",
+      "name": "Input Validation Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔍 Step 2: ATS Evaluation\n\n**Nodes:** Message a model → Parse ATS JSON\n\n**What happens:**\n- GPT-4o-mini evaluates resume vs JD\n- Scores 4 dimensions (title, skills, experience, formatting)\n- Returns JSON with:\n  - Overall ATS score\n  - Dimension scores\n  - Strengths & gaps\n- Parses JSON for next step",
+        "height": 320,
+        "width": 364,
+        "color": 3
+      },
+      "id": "a19c87a0-fafe-43ea-bbe8-a4b54047992f",
+      "name": "ATS Evaluation Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ✍️ Step 3: Resume Tailoring\n\n**Node:** Tailor Resume\n\n**What happens:**\n- GPT-4o-mini rewrites resume to target 99-100% ATS match\n- Uses identified gaps to guide improvements\n- Maintains truthfulness (no fabrication)\n- Keeps ATS-friendly formatting\n- Optimizes keyword alignment without stuffing",
+        "height": 284,
+        "width": 364,
+        "color": 6
+      },
+      "id": "a0bc2df0-00b6-4cdd-83ce-af163a2120ec",
+      "name": "Resume Tailoring Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        752,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📄 Step 4: Google Docs Export\n\n**Nodes:** HTTP Request → HTTP Request1 → Code in JavaScript2\n\n**What happens:**\n- Creates new Google Doc (title: candidate_name, target_role)\n- Inserts tailored resume text\n- Formats final output with:\n  - Document URL\n  - ATS scores\n  - Strengths & gaps analysis",
+        "height": 304,
+        "width": 412,
+        "color": 2
+      },
+      "id": "aa88b5cd-5e48-49b7-acda-e6f3cc0d34d9",
+      "name": "Google Docs Export Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        -64
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse ATS JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ATS JSON": {
+      "main": [
+        [
+          {
+            "node": "Tailor Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tailor Resume": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "296d8b4c-cc58-44f2-a055-1355c66763ee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "82a8de53e91ff8f1e981cad56bc7473486f11680c26b3247db2217755486fa03"
+  },
+  "id": "ThH2fjlN202vIbxy",
+  "tags": []
+}
