@@ -1,10 +1,4 @@
-Got it 👍 — thanks for flagging.
-You’re right: **no file was actually created yet**. Let’s fix this cleanly.
 
-Below is a **complete `README.md` you can copy-paste directly into your repo root** (`Generative-AI-Projects/README.md`).
-It is **beginner-friendly**, explains **what this repo is**, **how to use it**, and **what each folder teaches**, based on the screenshot you shared.
-
----
 
 # 🚀 Generative AI Projects – Learn by Building
 
