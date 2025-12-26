@@ -50,8 +50,8 @@ The application uses **5 specialized AI agents** working together:
 ### 1. **Researcher Agent** 🔍
 - **Role**: Searches for travel destinations, activities, and accommodations
 - **Capabilities**:
-  - Generates 4-5 targeted search terms based on destination, duration, style, and budget
-  - Searches the web using SerpAPI
+  - Generates focused queries based on destination, duration, style, and budget
+  - Uses DuckDuckGo (no API key) to gather top results
   - Organizes results by categories (Attractions, Restaurants, Accommodations, Activities, Tips)
   - Prioritizes recent and highly-rated options
   - Provides cost estimates when available
@@ -77,25 +77,23 @@ The application uses **5 specialized AI agents** working together:
 - **API**: Open-Meteo (completely free, no API key required)
 
 ### 4. **Activities Agent** 🎫
-- **Role**: Identifies activities and finds booking links
+- **Role**: Identifies activities and suggests booking options
 - **Capabilities**:
   - Extracts specific activities and attractions from itineraries
-  - Searches for official booking platforms (Viator, GetYourGuide, TripAdvisor, Klook)
-  - Finds direct booking URLs for each activity
-  - Includes activity names, descriptions, and estimated prices
+  - Suggests likely booking platforms (Viator, GetYourGuide, TripAdvisor, Klook, official sites)
+  - Includes activity names, descriptions, and estimated prices when possible
   - Organizes links by day when possible
-- **Tools**: SerpAPI for web search
+- **Tools**: LLM-only (no API key required)
 
 ### 5. **Logistics Agent** 🗺️
 - **Role**: Plans transportation and routes between locations
 - **Capabilities**:
   - Analyzes itinerary to identify locations
-  - Finds best transportation options between locations
   - Suggests optimal routes and transportation modes
   - Estimates travel times between activities
   - Recommends efficient day plans to minimize travel time
   - Provides practical transportation tips
-- **Tools**: SerpAPI for transportation research
+- **Tools**: LLM-only (no API key required)
 
 ---
 
@@ -104,7 +102,7 @@ The application uses **5 specialized AI agents** working together:
 ### Prerequisites
 - Python 3.8 or higher
 - OpenAI API account (for GPT-4o)
-- SerpAPI account (for web search functionality)
+  - Web search uses DuckDuckGo; no key needed
 
 ### Installation
 
@@ -123,7 +121,8 @@ Required packages:
 - `streamlit` - Web application framework
 - `agno` - AI agent framework
 - `openai` - OpenAI API client
-- `google-search-results` - SerpAPI wrapper
+- `duckduckgo-search` - Web search without API keys
+- `beautifulsoup4` - Lightweight HTML parsing for snippets
 - `icalendar` - Calendar file generation
 - `requests` - HTTP requests (for weather API)
 
@@ -134,11 +133,6 @@ Required packages:
   - Sign up at [platform.openai.com](https://platform.openai.com/)
   - Get your API key from the dashboard
   - Required for all AI agents
-
-- **SerpAPI Key**: 
-  - Sign up at [serpapi.com](https://serpapi.com/)
-  - Free tier available (100 searches/month)
-  - Required for web search functionality
 
 #### Optional APIs:
 - **Weather**: ✅ No API key needed! 
@@ -160,8 +154,7 @@ The app will open in your browser at `http://localhost:8501`
 ### Step 1: Configure API Keys
 1. Open the sidebar (click the arrow icon)
 2. Enter your **OpenAI API Key** (required)
-3. Enter your **SerpAPI Key** (required)
-4. (Optional) Enable **Weather Forecast** checkbox (no API key needed!)
+3. (Optional) Enable **Weather Forecast** checkbox (no API key needed!)
 
 ### Step 2: Set Travel Preferences
 In the sidebar, configure your preferences:
@@ -279,7 +272,7 @@ After generating your travel itinerary:
 - **Framework**: Streamlit for web interface
 - **AI Framework**: Agno for multi-agent orchestration
 - **Language Model**: OpenAI GPT-4o
-- **Search Engine**: SerpAPI (Google Search)
+- **Search Engine**: DuckDuckGo (no key required)
 - **Weather API**: Open-Meteo (free, no key required)
 
 ### Token Management
@@ -300,11 +293,11 @@ After generating your travel itinerary:
 
 | Feature | Status | API Required |
 |---------|--------|--------------|
-| AI-Powered Research | ✅ Included | OpenAI + SerpAPI |
+| AI-Powered Research | ✅ Included | OpenAI + DuckDuckGo (no key) |
 | Personalized Itineraries | ✅ Included | OpenAI |
 | Weather Forecasts | ✅ Included | Open-Meteo (Free) |
-| Activity Booking Links | ✅ Included | OpenAI + SerpAPI |
-| Transportation Planning | ✅ Included | OpenAI + SerpAPI |
+| Activity Booking Links | ✅ Included | OpenAI |
+| Transportation Planning | ✅ Included | OpenAI |
 | Calendar Export | ✅ Included | None |
 | Multiple Export Formats | ✅ Included | None |
 | Travel Preferences | ✅ Included | None |
@@ -316,8 +309,8 @@ After generating your travel itinerary:
 ### Common Issues:
 
 **"API Key Error"**
-- Ensure OpenAI and SerpAPI keys are entered correctly
-- Check that keys are active and have available credits
+- Ensure OpenAI key is entered correctly
+- Check that the OpenAI key is active and has available credits
 
 **"Token Limit Exceeded"**
 - Try generating for shorter trips (fewer days)
@@ -342,7 +335,8 @@ See `requirements.txt` for complete list:
 - `streamlit` - Web framework
 - `agno` - AI agent framework  
 - `openai` - OpenAI API client
-- `google-search-results` - SerpAPI wrapper
+- `duckduckgo-search` - Web search without API keys
+- `beautifulsoup4` - HTML parsing for snippets
 - `icalendar` - Calendar generation
 - `requests` - HTTP requests
 
@@ -374,7 +368,7 @@ This project is part of the Generative AI Projects repository.
 - Built with [Agno](https://github.com/agno-ai/agno) agent framework
 - Uses [OpenAI GPT-4o](https://openai.com/) for AI capabilities
 - Weather data from [Open-Meteo](https://open-meteo.com/) (free API)
-- Search powered by [SerpAPI](https://serpapi.com/)
+- Search powered by DuckDuckGo (no API key required)
 
 ## 👤 Author
 

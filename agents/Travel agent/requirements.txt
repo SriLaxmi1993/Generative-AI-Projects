@@ -1,6 +1,7 @@
-streamlit 
+streamlit
 agno
 openai
-google-search-results
+duckduckgo-search
+beautifulsoup4
 icalendar
 requests
