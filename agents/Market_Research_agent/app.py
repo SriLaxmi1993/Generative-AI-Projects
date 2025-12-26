@@ -13,9 +13,15 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from io import BytesIO
+import time
+import json as _json
 
 # Load environment variables
 load_dotenv()
+
+#region removed agent log (cleanup)
+# Debug instrumentation removed after verification run.
+#endregion
 
 # Set page config
 st.set_page_config(
@@ -106,7 +112,7 @@ def search_serpapi(serpapi_key, query):
             'num': 5
         }
         
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
         results = response.json()
         
@@ -169,7 +175,7 @@ def search_perplexity(perplexity_api_key, query):
             'temperature': 0.2
         }
         
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=20)
         response.raise_for_status()
         results = response.json()
         
@@ -240,6 +246,7 @@ async def research_question_async(llm, serpapi_key, perplexity_api_key, topic, d
     # Search with SerpApi first
     serpapi_content, serpapi_sources = search_serpapi(serpapi_key, f"{topic} {domain} {question}")
     
+    
     # Search with Perplexity if available
     perplexity_content = search_perplexity(perplexity_api_key, f"{topic} {domain} {question}")
     
@@ -260,8 +267,18 @@ async def research_question_async(llm, serpapi_key, perplexity_api_key, topic, d
         """
     )
     
-    research_result: RunOutput = research_task.run(input=question)
-    return research_result.content, serpapi_sources
+    # Run the agent in a thread with a timeout to avoid indefinite blocking
+    loop = asyncio.get_running_loop()
+    try:
+        research_result: RunOutput = await asyncio.wait_for(
+            loop.run_in_executor(None, research_task.run, question),
+            timeout=90
+        )
+        return research_result.content, serpapi_sources
+    except asyncio.TimeoutError:
+        return "Timed out while generating answer. Please retry.", serpapi_sources
+    except Exception as e:
+        return f"Error generating answer: {str(e)}", serpapi_sources
 
 # Function to research questions in parallel
 async def research_questions_parallel(llm, serpapi_key, perplexity_api_key, topic, domain, questions):
