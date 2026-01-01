@@ -1,193 +1,353 @@
-"""Task definitions for the competitive intelligence crew."""
+"""
+Task definitions for Competitor Analysis System
+Defines three sequential tasks: Research, Analysis, and Report Generation
+"""
+
+import logging
 from crewai import Task
-from typing import List
-from config import COMPETITORS, KEYWORDS
+import config
+
+logger = logging.getLogger(__name__)
 
 
-def create_web_research_task(agent, competitors: List[str] = None) -> Task:
-    """Create web research task."""
-    competitors = competitors or COMPETITORS
-    competitors_str = ", ".join(competitors)
+def create_research_task(agent, company_name: str, industry: str, num_competitors: int) -> Task:
+    """
+    Create Competitor Research Task
     
-    return Task(
-        description=(
-            f"Research the following competitors: {competitors_str}\n\n"
-            "For each competitor, search for:\n"
-            "1. Recent news articles and press releases\n"
-            "2. Product Hunt launches or updates\n"
-            "3. Blog posts and company announcements\n"
-            "4. Website changes or new features\n\n"
-            "Focus on information from the last 7 days. Look for:\n"
-            "- Product launches or updates\n"
-            "- Funding announcements\n"
-            "- Partnerships or acquisitions\n"
-            "- Strategic pivots or changes\n"
-            "- Customer feedback and sentiment\n"
-            "- Market positioning changes\n\n"
-            "Provide detailed findings with sources and URLs."
-        ),
-        expected_output=(
-            "A comprehensive report containing:\n"
-            "- List of all findings organized by competitor\n"
-            "- Title, description, and URL for each finding\n"
-            "- Source type (news, Product Hunt, etc.)\n"
-            "- Date discovered\n"
-            "- Brief summary of significance\n"
-            "Format as structured JSON for easy processing."
-        ),
+    This task focuses on discovering and gathering comprehensive data about competitors
+    
+    Args:
+        agent: Research agent to execute the task
+        company_name: Name of the company being analyzed
+        industry: Industry sector
+        num_competitors: Number of competitors to research
+        
+    Returns:
+        Task: Configured research task
+    """
+    logger.info(f"Creating research task for {company_name}")
+    
+    description = f"""
+    Conduct comprehensive competitor research for {company_name} in the {industry} industry.
+    
+    Your objectives:
+    1. Identify the top {num_competitors} direct competitors of {company_name}
+    2. For each competitor, gather:
+       - Company name and website
+       - Brief description and main products/services
+       - Target market and customer base
+       - Key differentiators
+       - Recent news or developments
+    3. Search for pricing information when available
+    4. Look for customer reviews and sentiment indicators
+    5. Identify market positioning and brand perception
+    
+    Use multiple search queries to ensure comprehensive coverage:
+    - "{company_name} competitors {industry}"
+    - "Top companies in {industry}"
+    - "{company_name} alternatives"
+    - "Best {industry} companies 2024"
+    
+    Focus on finding accurate, recent, and relevant information from reliable sources.
+    Prioritize official company websites, industry reports, and reputable business publications.
+    """
+    
+    expected_output = f"""
+    A detailed research report containing:
+    
+    1. COMPETITOR LIST ({num_competitors} competitors):
+       For each competitor:
+       - Company Name
+       - Website URL
+       - Description (2-3 sentences)
+       - Main Products/Services
+       - Target Market
+       - Key Differentiators
+       
+    2. PRICING INFORMATION:
+       - Available pricing data for each competitor
+       - Pricing model (subscription, one-time, freemium, etc.)
+       - Price ranges or tiers
+       
+    3. CUSTOMER SENTIMENT:
+       - Review highlights for each competitor
+       - Common praise points
+       - Common complaints
+       - Overall sentiment (positive/neutral/negative)
+       
+    4. MARKET POSITIONING:
+       - How each competitor positions themselves
+       - Their unique value propositions
+       - Target customer segments
+    
+    Format the output as structured text with clear sections and bullet points.
+    Include sources/links where information was found.
+    """
+    
+    task = Task(
+        description=description,
+        expected_output=expected_output,
         agent=agent
     )
+    
+    logger.info("Research task created successfully")
+    return task
 
 
-def create_social_monitoring_task(agent, competitors: List[str] = None, keywords: List[str] = None) -> Task:
-    """Create social media monitoring task."""
-    competitors = competitors or COMPETITORS
-    keywords = keywords or KEYWORDS
+def create_analysis_task(agent, company_name: str, industry: str, context_tasks: list) -> Task:
+    """
+    Create Competitive Analysis Task
     
-    search_terms = competitors + keywords
-    search_str = ", ".join(search_terms)
+    This task analyzes the research data to provide strategic insights
     
-    return Task(
-        description=(
-            f"Monitor social media for mentions of: {search_str}\n\n"
-            "Search the following platforms:\n"
-            "1. Twitter - Find recent tweets, measure engagement, identify influencers\n"
-            "2. Hacker News - Find discussions, launches, and community sentiment\n\n"
-            "For each platform, analyze:\n"
-            "- Volume of mentions (trending up or down?)\n"
-            "- Sentiment (positive, negative, neutral)\n"
-            "- Engagement levels (likes, retweets, comments)\n"
-            "- Key influencers or thought leaders discussing the topic\n"
-            "- Emerging narratives or concerns\n"
-            "- Viral content or trending discussions\n\n"
-            "Focus on the last 24-48 hours for Twitter, last 7 days for Hacker News."
-        ),
-        expected_output=(
-            "A detailed social intelligence report containing:\n"
-            "- Platform-by-platform breakdown of findings\n"
-            "- Top posts/tweets by engagement\n"
-            "- Sentiment analysis summary\n"
-            "- Notable influencers or discussions\n"
-            "- Trending topics or concerns\n"
-            "- URLs to significant posts\n"
-            "Format as structured JSON for easy processing."
-        ),
-        agent=agent
-    )
-
-
-def create_analysis_task(agent, web_research_task: Task, social_monitoring_task: Task) -> Task:
-    """Create intelligence analysis task."""
-    return Task(
-        description=(
-            "Analyze the data collected from web research and social monitoring to create actionable intelligence.\n\n"
-            "Your analysis should:\n"
-            "1. Synthesize findings from both sources\n"
-            "2. Identify significant changes or developments\n"
-            "3. Detect patterns and trends\n"
-            "4. Assess strategic implications\n"
-            "5. Assign priority levels to each finding:\n"
-            "   - HIGH: Immediate business impact (funding, acquisitions, major launches, significant pivots)\n"
-            "   - MEDIUM: Notable but not urgent (feature updates, partnerships, events, hiring)\n"
-            "   - LOW: Informational (minor updates, general discussions)\n\n"
-            "For each intelligence item, provide:\n"
-            "- Competitor name\n"
-            "- Title/headline\n"
-            "- Summary of what happened\n"
-            "- Why it matters (strategic implications)\n"
-            "- Priority level (High/Medium/Low)\n"
-            "- Source and URL\n"
-            "- Recommended actions (if applicable)\n\n"
-            "Group findings by priority level and competitor."
-        ),
-        expected_output=(
-            "A structured intelligence report in JSON format containing:\n"
-            "- Executive summary of key findings\n"
-            "- Intelligence items grouped by priority (High/Medium/Low)\n"
-            "- Each item with: competitor, title, summary, implications, priority, source, url\n"
-            "- Trend analysis and patterns observed\n"
-            "- Recommended actions for high-priority items\n"
-            "- Metadata: total items, breakdown by priority, date range analyzed"
-        ),
-        agent=agent,
-        context=[web_research_task, social_monitoring_task]
-    )
-
-
-def create_reporting_task(agent, analysis_task: Task, report_type: str = "daily") -> Task:
-    """Create Slack reporting task."""
+    Args:
+        agent: Analysis agent to execute the task
+        company_name: Name of the company being analyzed
+        industry: Industry sector
+        context_tasks: List of tasks to use as context (research task)
+        
+    Returns:
+        Task: Configured analysis task
+    """
+    logger.info(f"Creating analysis task for {company_name}")
     
-    if report_type == "immediate":
-        description = (
-            "Create an immediate alert for HIGH PRIORITY intelligence items.\n\n"
-            "Format the alert to be:\n"
-            "- Attention-grabbing but professional\n"
-            "- Concise and actionable\n"
-            "- Clearly stating why this is urgent\n"
-            "- Including relevant links and sources\n\n"
-            "Use Slack formatting (bold, bullets, emojis) for readability."
-        )
-        expected_output = (
-            "A Slack message formatted for immediate alert containing:\n"
-            "- 🚨 Alert header\n"
-            "- Competitor name and what happened\n"
-            "- Why it matters\n"
-            "- Recommended actions\n"
-            "- Source links\n"
-            "Ready to send via Slack MCP."
-        )
+    description = f"""
+    Analyze the competitive landscape for {company_name} based on the research data provided.
     
-    elif report_type == "daily":
-        description = (
-            "Create a daily digest of competitive intelligence findings.\n\n"
-            "The digest should:\n"
-            "- Summarize all findings from the last 24 hours\n"
-            "- Group by priority level (High/Medium/Low)\n"
-            "- Highlight key trends or patterns\n"
-            "- Be scannable and easy to read\n"
-            "- Include links to sources\n\n"
-            "Use Slack formatting for a professional, readable digest."
-        )
-        expected_output = (
-            "A formatted daily digest Slack message containing:\n"
-            "- 📊 Daily Intelligence Digest header with date\n"
-            "- Summary of total findings\n"
-            "- High priority items (if any)\n"
-            "- Medium priority items\n"
-            "- Low priority items\n"
-            "- Key trends observed\n"
-            "- All with proper Slack formatting\n"
-            "Ready to send via Slack MCP."
-        )
+    Your objectives:
+    1. Perform SWOT analysis for each major competitor:
+       - Strengths: What they do well
+       - Weaknesses: Areas where they fall short
+       - Opportunities: Market gaps they could fill
+       - Threats: Challenges they face
+       
+    2. Create a competitive comparison matrix:
+       - Compare key features across all competitors
+       - Compare pricing strategies
+       - Compare target markets and positioning
+       - Identify competitive advantages and disadvantages
+       
+    3. Analyze market positioning:
+       - Map competitors on key dimensions (price vs. value, features vs. simplicity, etc.)
+       - Identify market leaders, challengers, and niche players
+       - Assess market saturation and white space opportunities
+       
+    4. Identify patterns and trends:
+       - Common strengths across competitors
+       - Emerging trends in the industry
+       - Gaps in the market
+       - Areas of intense competition vs. underserved segments
     
-    else:  # weekly
-        description = (
-            "Create a comprehensive weekly intelligence report.\n\n"
-            "The report should:\n"
-            "- Provide an executive summary of the week\n"
-            "- Highlight the most significant developments\n"
-            "- Show trends and patterns over the week\n"
-            "- Compare competitor activities\n"
-            "- Provide strategic recommendations\n"
-            "- Include metrics (total items, by priority, by competitor)\n\n"
-            "Make it comprehensive but well-organized and scannable."
-        )
-        expected_output = (
-            "A comprehensive weekly report Slack message containing:\n"
-            "- 📈 Weekly Intelligence Report header with date range\n"
-            "- Executive summary\n"
-            "- Key highlights of the week\n"
-            "- Breakdown by competitor\n"
-            "- Trend analysis\n"
-            "- Metrics and statistics\n"
-            "- Strategic recommendations\n"
-            "- All with proper Slack formatting\n"
-            "Ready to send via Slack MCP."
-        )
+    Use analytical frameworks and data-driven insights. Be objective and thorough.
+    """
     
-    return Task(
+    expected_output = f"""
+    A comprehensive competitive analysis report containing:
+    
+    1. EXECUTIVE SUMMARY:
+       - Overview of competitive landscape
+       - Key findings (3-5 bullet points)
+       - Market dynamics summary
+       
+    2. COMPETITOR SWOT ANALYSIS:
+       For each major competitor:
+       - Strengths (3-5 points)
+       - Weaknesses (3-5 points)
+       - Opportunities (2-3 points)
+       - Threats (2-3 points)
+       
+    3. COMPETITIVE COMPARISON MATRIX:
+       | Feature/Aspect | Competitor 1 | Competitor 2 | Competitor 3 | ... |
+       |----------------|-------------|-------------|-------------|-----|
+       | Pricing        |             |             |             |     |
+       | Key Features   |             |             |             |     |
+       | Target Market  |             |             |             |     |
+       | Strengths      |             |             |             |     |
+       | Weaknesses     |             |             |             |     |
+       
+    4. MARKET POSITIONING ANALYSIS:
+       - Competitive positioning map
+       - Market segmentation insights
+       - Leader/Challenger/Niche classification
+       
+    5. COMPETITIVE INSIGHTS:
+       - Key trends in the competitive landscape
+       - Market gaps and opportunities
+       - Areas of competitive intensity
+       - Differentiation strategies observed
+    
+    Format as structured text with clear sections, tables, and bullet points.
+    Be specific and reference the research data.
+    """
+    
+    task = Task(
         description=description,
         expected_output=expected_output,
         agent=agent,
-        context=[analysis_task]
+        context=context_tasks
     )
+    
+    logger.info("Analysis task created successfully")
+    return task
+
+
+def create_report_task(agent, company_name: str, industry: str, context_tasks: list) -> Task:
+    """
+    Create Report Generation Task
+    
+    This task synthesizes all insights into an actionable strategic report
+    
+    Args:
+        agent: Report agent to execute the task
+        company_name: Name of the company being analyzed
+        industry: Industry sector
+        context_tasks: List of tasks to use as context (research + analysis tasks)
+        
+    Returns:
+        Task: Configured report task
+    """
+    logger.info(f"Creating report task for {company_name}")
+    
+    description = f"""
+    Create a comprehensive, executive-ready competitor analysis report for {company_name}.
+    
+    Synthesize insights from the research and analysis phases into a strategic report that:
+    
+    1. Provides a clear overview of the competitive landscape
+    2. Highlights key competitive threats and opportunities
+    3. Offers actionable strategic recommendations
+    4. Presents information in a professional, easy-to-digest format
+    
+    Your objectives:
+    1. Write an executive summary (1-2 paragraphs) that captures the essence of the analysis
+    2. Present key findings in a clear, prioritized manner
+    3. Provide strategic recommendations based on the competitive analysis
+    4. Identify specific actions {company_name} should consider
+    5. Highlight risks and opportunities in the competitive landscape
+    
+    The report should be:
+    - Professional and business-focused
+    - Data-driven with specific examples
+    - Actionable with clear recommendations
+    - Well-structured and easy to navigate
+    - Free of jargon and highly readable
+    """
+    
+    expected_output = f"""
+    A complete competitor analysis report for {company_name} with the following structure:
+    
+    # COMPETITOR ANALYSIS REPORT: {company_name}
+    Industry: {industry}
+    Date: [Current Date]
+    
+    ## EXECUTIVE SUMMARY
+    [2-3 paragraphs summarizing the competitive landscape, key findings, and strategic implications]
+    
+    ## KEY FINDINGS
+    1. [Most important insight]
+    2. [Second most important insight]
+    3. [Third most important insight]
+    4. [Fourth insight]
+    5. [Fifth insight]
+    
+    ## COMPETITIVE LANDSCAPE OVERVIEW
+    [Detailed overview of the competitive environment, market structure, and key players]
+    
+    ## DETAILED COMPETITOR ANALYSIS
+    For each major competitor:
+    ### [Competitor Name]
+    - **Overview**: [Brief description]
+    - **Strengths**: [Key strengths]
+    - **Weaknesses**: [Key weaknesses]
+    - **Market Position**: [How they're positioned]
+    - **Competitive Threat Level**: [High/Medium/Low with explanation]
+    
+    ## COMPETITIVE COMPARISON MATRIX
+    [Structured comparison of all competitors across key dimensions]
+    
+    ## MARKET OPPORTUNITIES
+    1. [Opportunity 1 with explanation]
+    2. [Opportunity 2 with explanation]
+    3. [Opportunity 3 with explanation]
+    
+    ## COMPETITIVE THREATS
+    1. [Threat 1 with explanation]
+    2. [Threat 2 with explanation]
+    3. [Threat 3 with explanation]
+    
+    ## STRATEGIC RECOMMENDATIONS
+    ### Immediate Actions (0-3 months)
+    1. [Specific actionable recommendation]
+    2. [Specific actionable recommendation]
+    3. [Specific actionable recommendation]
+    
+    ### Short-term Initiatives (3-6 months)
+    1. [Specific actionable recommendation]
+    2. [Specific actionable recommendation]
+    
+    ### Long-term Strategy (6-12 months)
+    1. [Specific actionable recommendation]
+    2. [Specific actionable recommendation]
+    
+    ## CONCLUSION
+    [Final thoughts and summary of strategic direction]
+    
+    ---
+    Report Generated by AI-Powered Competitor Analysis System
+    """
+    
+    task = Task(
+        description=description,
+        expected_output=expected_output,
+        agent=agent,
+        context=context_tasks
+    )
+    
+    logger.info("Report task created successfully")
+    return task
+
+
+def create_all_tasks(agents: dict, company_name: str, industry: str, num_competitors: int) -> list:
+    """
+    Create all three tasks in proper sequence with dependencies
+    
+    Args:
+        agents: Dictionary containing all three agents
+        company_name: Name of the company being analyzed
+        industry: Industry sector
+        num_competitors: Number of competitors to analyze
+        
+    Returns:
+        list: List of tasks in execution order
+    """
+    logger.info(f"Creating all tasks for {company_name}")
+    
+    # Task 1: Research (no dependencies)
+    research_task = create_research_task(
+        agents["research"],
+        company_name,
+        industry,
+        num_competitors
+    )
+    
+    # Task 2: Analysis (depends on research)
+    analysis_task = create_analysis_task(
+        agents["analysis"],
+        company_name,
+        industry,
+        context_tasks=[research_task]
+    )
+    
+    # Task 3: Report (depends on research + analysis)
+    report_task = create_report_task(
+        agents["report"],
+        company_name,
+        industry,
+        context_tasks=[research_task, analysis_task]
+    )
+    
+    tasks = [research_task, analysis_task, report_task]
+    
+    logger.info("All tasks created successfully")
+    return tasks
+

@@ -1,210 +1,347 @@
-"""Custom tools for the competitive intelligence agents."""
-from crewai_tools import BaseTool
-from typing import Type, Any, Dict, List
-try:
-    from pydantic.v1 import BaseModel, Field
-except ImportError:
-    from pydantic import BaseModel, Field
-import requests
-from serpapi import GoogleSearch
-import tweepy
+"""
+Custom tools for Competitor Analysis System
+Includes SerpAPI wrapper and data processing utilities
+"""
+
 import json
-from config import (
-    SERPAPI_API_KEY,
-    TWITTER_BEARER_TOKEN
-)
+import time
+import logging
+from typing import Dict, List, Optional, Any
+from serpapi import GoogleSearch
+from crewai_tools import BaseTool
+from pydantic import Field
+import config
+
+logger = logging.getLogger(__name__)
 
 
-# Tool Input Schemas
-class WebSearchInput(BaseModel):
-    """Input schema for web search tool."""
-    query: str = Field(..., description="Search query for finding competitor information")
-    num_results: int = Field(default=10, description="Number of results to return")
-
-
-class TwitterSearchInput(BaseModel):
-    """Input schema for Twitter search tool."""
-    query: str = Field(..., description="Search query for Twitter")
-    max_results: int = Field(default=10, description="Maximum number of tweets to return")
-
-
-class HackerNewsSearchInput(BaseModel):
-    """Input schema for Hacker News search tool."""
-    query: str = Field(..., description="Search query for Hacker News")
-    num_results: int = Field(default=10, description="Number of results to return")
-
-
-# Custom Tools
-class WebSearchTool(BaseTool):
-    """Tool for searching the web using SerpAPI."""
-    name: str = "Web Search Tool"
-    description: str = (
-        "Searches the web for competitor information using Google Search. "
-        "Can find news articles, blog posts, Product Hunt launches, and company websites. "
-        "Returns titles, snippets, and URLs."
-    )
-    args_schema: Type[BaseModel] = WebSearchInput
+class CompetitorSearchTool(BaseTool):
+    """Tool for searching competitor information using SerpAPI"""
     
-    def _run(self, query: str, num_results: int = 10) -> str:
-        """Execute web search."""
-        try:
-            search = GoogleSearch({
-                "q": query,
-                "api_key": SERPAPI_API_KEY,
-                "num": num_results
-            })
-            results = search.get_dict()
-            
-            formatted_results = []
-            
-            # Organic results
-            if "organic_results" in results:
-                for result in results["organic_results"][:num_results]:
-                    formatted_results.append({
-                        "title": result.get("title", ""),
-                        "snippet": result.get("snippet", ""),
-                        "url": result.get("link", ""),
-                        "source": result.get("source", "")
-                    })
-            
-            # News results
-            if "news_results" in results:
-                for result in results["news_results"][:5]:
-                    formatted_results.append({
-                        "title": result.get("title", ""),
-                        "snippet": result.get("snippet", ""),
-                        "url": result.get("link", ""),
-                        "source": result.get("source", ""),
-                        "date": result.get("date", "")
-                    })
-            
-            return json.dumps(formatted_results, indent=2)
-        
-        except Exception as e:
-            return f"Error performing web search: {str(e)}"
-
-
-class TwitterSearchTool(BaseTool):
-    """Tool for searching Twitter using Twitter API v2."""
-    name: str = "Twitter Search Tool"
-    description: str = (
-        "Searches Twitter for mentions of competitors, products, or keywords. "
-        "Returns recent tweets with engagement metrics."
-    )
-    args_schema: Type[BaseModel] = TwitterSearchInput
+    name: str = "Competitor Search Tool"
+    description: str = """Search for competitor information, company details, pricing, and reviews.
+    Input should be a search query string. Returns structured information about competitors."""
     
-    def _run(self, query: str, max_results: int = 10) -> str:
-        """Execute Twitter search."""
-        try:
-            client = tweepy.Client(bearer_token=TWITTER_BEARER_TOKEN)
-            
-            tweets = client.search_recent_tweets(
-                query=query,
-                max_results=min(max_results, 100),
-                tweet_fields=['created_at', 'public_metrics', 'author_id'],
-                expansions=['author_id'],
-                user_fields=['username', 'name']
-            )
-            
-            if not tweets.data:
-                return json.dumps({"message": "No tweets found"})
-            
-            # Create user lookup
-            users = {user.id: user for user in tweets.includes.get('users', [])}
-            
-            formatted_results = []
-            for tweet in tweets.data:
-                author = users.get(tweet.author_id)
-                formatted_results.append({
-                    "text": tweet.text,
-                    "author": author.username if author else "Unknown",
-                    "author_name": author.name if author else "Unknown",
-                    "created_at": str(tweet.created_at),
-                    "likes": tweet.public_metrics['like_count'],
-                    "retweets": tweet.public_metrics['retweet_count'],
-                    "replies": tweet.public_metrics['reply_count'],
-                    "url": f"https://twitter.com/{author.username}/status/{tweet.id}" if author else ""
-                })
-            
-            return json.dumps(formatted_results, indent=2)
-        
-        except Exception as e:
-            return f"Error searching Twitter: {str(e)}"
-
-
-class HackerNewsSearchTool(BaseTool):
-    """Tool for searching Hacker News using Algolia API."""
-    name: str = "Hacker News Search Tool"
-    description: str = (
-        "Searches Hacker News for competitor mentions, product launches, and tech discussions. "
-        "Returns stories with points and comment counts."
-    )
-    args_schema: Type[BaseModel] = HackerNewsSearchInput
+    api_key: str = Field(default=config.SERPAPI_API_KEY)
+    max_results: int = Field(default=10)
     
-    def _run(self, query: str, num_results: int = 10) -> str:
-        """Execute Hacker News search."""
+    def _run(self, query: str) -> str:
+        """Execute competitor search"""
         try:
-            url = "http://hn.algolia.com/api/v1/search"
+            logger.info(f"Searching for: {query}")
+            
+            # Execute search
             params = {
-                "query": query,
-                "tags": "story",
-                "hitsPerPage": num_results
+                "q": query,
+                "api_key": self.api_key,
+                "num": self.max_results,
+                "engine": "google"
             }
             
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            formatted_results = []
-            for hit in data.get("hits", []):
-                formatted_results.append({
-                    "title": hit.get("title", ""),
-                    "url": hit.get("url", ""),
-                    "points": hit.get("points", 0),
-                    "num_comments": hit.get("num_comments", 0),
-                    "author": hit.get("author", ""),
-                    "created_at": hit.get("created_at", ""),
-                    "hn_url": f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}"
-                })
-            
-            return json.dumps(formatted_results, indent=2)
-        
-        except Exception as e:
-            return f"Error searching Hacker News: {str(e)}"
-
-
-class ProductHuntSearchTool(BaseTool):
-    """Tool for searching Product Hunt."""
-    name: str = "Product Hunt Search Tool"
-    description: str = (
-        "Searches Product Hunt for competitor product launches and updates. "
-        "Uses web scraping to find relevant products."
-    )
-    args_schema: Type[BaseModel] = WebSearchInput
-    
-    def _run(self, query: str, num_results: int = 10) -> str:
-        """Execute Product Hunt search via SerpAPI."""
-        try:
-            # Search Product Hunt via Google
-            search_query = f"site:producthunt.com {query}"
-            search = GoogleSearch({
-                "q": search_query,
-                "api_key": SERPAPI_API_KEY,
-                "num": num_results
-            })
+            search = GoogleSearch(params)
             results = search.get_dict()
             
-            formatted_results = []
-            if "organic_results" in results:
-                for result in results["organic_results"]:
-                    formatted_results.append({
-                        "title": result.get("title", ""),
-                        "snippet": result.get("snippet", ""),
-                        "url": result.get("link", ""),
-                        "source": "Product Hunt"
-                    })
+            # Process results
+            processed_results = self._process_search_results(results)
             
-            return json.dumps(formatted_results, indent=2)
-        
+            return json.dumps(processed_results, indent=2)
+            
         except Exception as e:
-            return f"Error searching Product Hunt: {str(e)}"
+            logger.error(f"Search error for query '{query}': {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "query": query,
+                "results": []
+            })
+    
+    def _process_search_results(self, results: Dict) -> Dict:
+        """Process and structure search results"""
+        processed = {
+            "organic_results": [],
+            "knowledge_graph": {},
+            "related_searches": []
+        }
+        
+        # Extract organic results
+        if "organic_results" in results:
+            for result in results["organic_results"][:self.max_results]:
+                processed["organic_results"].append({
+                    "title": result.get("title", ""),
+                    "link": result.get("link", ""),
+                    "snippet": result.get("snippet", ""),
+                    "position": result.get("position", 0)
+                })
+        
+        # Extract knowledge graph if available
+        if "knowledge_graph" in results:
+            kg = results["knowledge_graph"]
+            processed["knowledge_graph"] = {
+                "title": kg.get("title", ""),
+                "type": kg.get("type", ""),
+                "description": kg.get("description", ""),
+                "website": kg.get("website", "")
+            }
+        
+        # Extract related searches
+        if "related_searches" in results:
+            processed["related_searches"] = [
+                rs.get("query", "") for rs in results["related_searches"]
+            ]
+        
+        return processed
+
+
+class CompanyInfoTool(BaseTool):
+    """Tool for getting detailed company information"""
+    
+    name: str = "Company Information Tool"
+    description: str = """Get detailed information about a specific company including 
+    description, website, industry, and key facts. Input should be the company name."""
+    
+    api_key: str = Field(default=config.SERPAPI_API_KEY)
+    
+    def _run(self, company_name: str) -> str:
+        """Get company information"""
+        try:
+            logger.info(f"Getting info for company: {company_name}")
+            
+            # Search for company information
+            params = {
+                "q": f"{company_name} company information",
+                "api_key": self.api_key,
+                "engine": "google"
+            }
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            # Extract company info
+            company_info = self._extract_company_info(results, company_name)
+            
+            return json.dumps(company_info, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error getting company info for '{company_name}': {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "company_name": company_name
+            })
+    
+    def _extract_company_info(self, results: Dict, company_name: str) -> Dict:
+        """Extract structured company information from search results"""
+        info = {
+            "name": company_name,
+            "description": "",
+            "website": "",
+            "industry": "",
+            "founded": "",
+            "headquarters": "",
+            "key_facts": []
+        }
+        
+        # Try to get info from knowledge graph
+        if "knowledge_graph" in results:
+            kg = results["knowledge_graph"]
+            info["description"] = kg.get("description", "")
+            info["website"] = kg.get("website", "")
+            info["founded"] = kg.get("founded", "")
+            info["headquarters"] = kg.get("headquarters", "")
+            
+            # Extract key facts
+            if "key_facts" in kg:
+                info["key_facts"] = kg.get("key_facts", [])
+        
+        # Fallback to organic results for description
+        if not info["description"] and "organic_results" in results:
+            if results["organic_results"]:
+                info["description"] = results["organic_results"][0].get("snippet", "")
+                info["website"] = results["organic_results"][0].get("link", "")
+        
+        return info
+
+
+class PricingSearchTool(BaseTool):
+    """Tool for finding pricing information"""
+    
+    name: str = "Pricing Search Tool"
+    description: str = """Search for pricing information for a specific company or product.
+    Input should be the company/product name. Returns pricing details if available."""
+    
+    api_key: str = Field(default=config.SERPAPI_API_KEY)
+    
+    def _run(self, company_name: str) -> str:
+        """Search for pricing information"""
+        try:
+            logger.info(f"Searching pricing for: {company_name}")
+            
+            # Search for pricing
+            params = {
+                "q": f"{company_name} pricing plans cost",
+                "api_key": self.api_key,
+                "engine": "google",
+                "num": 5
+            }
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            # Extract pricing info
+            pricing_info = self._extract_pricing_info(results, company_name)
+            
+            return json.dumps(pricing_info, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error searching pricing for '{company_name}': {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "company_name": company_name
+            })
+    
+    def _extract_pricing_info(self, results: Dict, company_name: str) -> Dict:
+        """Extract pricing information from search results"""
+        pricing = {
+            "company_name": company_name,
+            "pricing_found": False,
+            "pricing_details": [],
+            "sources": []
+        }
+        
+        if "organic_results" in results:
+            for result in results["organic_results"]:
+                snippet = result.get("snippet", "").lower()
+                
+                # Look for pricing indicators
+                if any(keyword in snippet for keyword in ["price", "pricing", "$", "cost", "plan"]):
+                    pricing["pricing_found"] = True
+                    pricing["pricing_details"].append({
+                        "source": result.get("title", ""),
+                        "link": result.get("link", ""),
+                        "description": result.get("snippet", "")
+                    })
+                    pricing["sources"].append(result.get("link", ""))
+        
+        return pricing
+
+
+class ReviewSearchTool(BaseTool):
+    """Tool for finding customer reviews and sentiment"""
+    
+    name: str = "Review Search Tool"
+    description: str = """Search for customer reviews and feedback about a company or product.
+    Input should be the company/product name. Returns review summaries and sentiment."""
+    
+    api_key: str = Field(default=config.SERPAPI_API_KEY)
+    
+    def _run(self, company_name: str) -> str:
+        """Search for reviews"""
+        try:
+            logger.info(f"Searching reviews for: {company_name}")
+            
+            # Search for reviews
+            params = {
+                "q": f"{company_name} reviews customer feedback",
+                "api_key": self.api_key,
+                "engine": "google",
+                "num": 5
+            }
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            # Extract review info
+            review_info = self._extract_review_info(results, company_name)
+            
+            return json.dumps(review_info, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error searching reviews for '{company_name}': {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "company_name": company_name
+            })
+    
+    def _extract_review_info(self, results: Dict, company_name: str) -> Dict:
+        """Extract review information from search results"""
+        reviews = {
+            "company_name": company_name,
+            "reviews_found": False,
+            "review_sources": [],
+            "sentiment_indicators": []
+        }
+        
+        if "organic_results" in results:
+            for result in results["organic_results"]:
+                snippet = result.get("snippet", "")
+                
+                # Look for review indicators
+                if any(keyword in snippet.lower() for keyword in ["review", "rating", "customer", "feedback"]):
+                    reviews["reviews_found"] = True
+                    reviews["review_sources"].append({
+                        "source": result.get("title", ""),
+                        "link": result.get("link", ""),
+                        "snippet": snippet
+                    })
+        
+        return reviews
+
+
+class DataProcessorTool(BaseTool):
+    """Tool for processing and structuring competitor data"""
+    
+    name: str = "Data Processor Tool"
+    description: str = """Process raw competitor data into structured format.
+    Input should be JSON string of competitor data. Returns cleaned and structured data."""
+    
+    def _run(self, data: str) -> str:
+        """Process competitor data"""
+        try:
+            # Parse input data
+            if isinstance(data, str):
+                try:
+                    data_dict = json.loads(data)
+                except json.JSONDecodeError:
+                    data_dict = {"raw_data": data}
+            else:
+                data_dict = data
+            
+            # Structure the data
+            processed = self._structure_data(data_dict)
+            
+            return json.dumps(processed, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error processing data: {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "raw_data": str(data)
+            })
+    
+    def _structure_data(self, data: Dict) -> Dict:
+        """Structure data into standard format"""
+        structured = {
+            "competitors": [],
+            "market_overview": {},
+            "data_quality": "processed"
+        }
+        
+        # Process competitor information
+        if "competitors" in data:
+            for comp in data["competitors"]:
+                structured["competitors"].append({
+                    "name": comp.get("name", ""),
+                    "website": comp.get("website", ""),
+                    "description": comp.get("description", ""),
+                    "strengths": comp.get("strengths", []),
+                    "weaknesses": comp.get("weaknesses", [])
+                })
+        
+        return structured
+
+
+# Create tool instances
+competitor_search_tool = CompetitorSearchTool()
+company_info_tool = CompanyInfoTool()
+pricing_search_tool = PricingSearchTool()
+review_search_tool = ReviewSearchTool()
+data_processor_tool = DataProcessorTool()
+
