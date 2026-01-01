@@ -17,6 +17,8 @@ An intelligent finance tracking application powered by **CrewAI** multi-agent sy
 - **Universal Format Support**: Handles CSV, Excel, and PDF bank statements
 - **AI-Powered Extraction**: Uses GPT-4 to intelligently extract transaction data from any format
 - **No Rigid Requirements**: Works with any column structure or layout
+- **Currency Detection**: Automatically detects and handles multiple currencies (₹, $, etc.)
+- **Intelligent Parsing**: Smart column detection and amount normalization
 
 ### 💡 Comprehensive Analysis
 - Automatic spending categorization
@@ -38,7 +40,7 @@ An intelligent finance tracking application powered by **CrewAI** multi-agent sy
 1. **Clone the repository**
 ```bash
 git clone <your-repo-url>
-cd Agent
+cd "personal Finacne agent"
 ```
 
 2. **Create virtual environment**
@@ -53,14 +55,18 @@ pip install -r requirements.txt
 ```
 
 4. **Set up environment variables**
+
+Create a `.env` file in the project root:
 ```bash
-cp .env.example .env
+touch .env
 ```
 
 Edit `.env` and add your OpenAI API key:
 ```
 OPENAI_API_KEY=sk-your-actual-api-key-here
 ```
+
+**Note**: Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 
 ### Running the Application
 
@@ -113,16 +119,17 @@ Date,Description,Amount
 ## 🏗️ Project Structure
 
 ```
-Agent/
-├── streamlit_app.py       # Main Streamlit application
-├── agents.py              # CrewAI agent definitions
-├── tasks.py               # Agent task definitions
-├── crew.py                # Multi-agent orchestration
-├── smart_processor.py     # AI-powered file processor
+personal Finacne agent/
+├── streamlit_app.py       # Main Streamlit application (UI layer)
+├── agents.py              # CrewAI agent definitions (Spending Analyst & Financial Advisor)
+├── tasks.py               # Agent task definitions (Analysis & Recommendation tasks)
+├── crew.py                # Multi-agent orchestration (CrewAI workflow)
+├── smart_processor.py     # AI-powered file processor (CSV/Excel/PDF handling)
 ├── requirements.txt       # Python dependencies
-├── .env.example          # Environment variables template
 ├── .gitignore            # Git ignore rules
 ├── run_streamlit.sh      # Startup script
+├── SETUP.md              # Quick setup guide
+├── TUTORIAL.md           # Comprehensive tutorial for Substack
 └── README.md             # This file
 ```
 
@@ -136,9 +143,15 @@ Edit `agents.py` to customize:
 
 ### Task Configuration
 Edit `tasks.py` to customize:
-- Analysis format
-- Recommendation structure
-- Output requirements
+- Analysis format and output structure
+- Recommendation structure and format
+- Output requirements and validation
+- Prompt instructions for agents
+
+**Recent Improvements**:
+- Enhanced prompts to ensure real numbers (not placeholders)
+- Better currency handling (₹, $, etc.)
+- Explicit instructions for data extraction
 
 ## �️ Security & Privacy
 
@@ -184,6 +197,23 @@ If you encounter any issues or have questions:
 - [ ] Export reports as PDF
 - [ ] Multiple account support
 - [ ] Mobile app version
+
+## 📝 Recent Updates
+
+### Latest Improvements (2024)
+- ✅ **Enhanced Data Processing**: Improved transaction extraction with better column detection
+- ✅ **Currency Support**: Automatic detection and handling of multiple currencies (₹, $, etc.)
+- ✅ **Real Number Analysis**: Fixed placeholder issues - agents now use actual transaction amounts
+- ✅ **Better Prompts**: Improved agent instructions for more accurate analysis
+- ✅ **Comprehensive Tutorial**: Added detailed TUTORIAL.md for Substack publication
+- ✅ **Code Cleanup**: Removed unnecessary files and improved project structure
+
+### Key Features
+- Smart file format detection (CSV, Excel, PDF)
+- Intelligent column matching (handles various bank statement formats)
+- AI-powered PDF extraction
+- Multi-currency support
+- Real-time analysis with progress indicators
 
 ---
 
