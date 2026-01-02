@@ -49,9 +49,11 @@ Generative-AI-Projects/
 ├── agents/
 │   ├── Agentic_Rag_Langchain/
 │   ├── Competitor analysis agent/
+│   ├── Customer support agent/
 │   ├── Market_Research_agent/
 │   ├── MCP Powered agents/
 │   │   └── travel-agent/
+│   ├── News TL;DR agent/
 │   ├── Travel agent/
 │   ├── Youtube Trend analysis/
 │   ├── n8n agents/
@@ -88,6 +90,19 @@ An AI agent that:
 
 ---
 
+### 🔹 Customer Support Agent
+
+An intelligent customer support agent that:
+
+* Categorizes customer queries (Technical, Billing, General)
+* Analyzes sentiment (Positive, Neutral, Negative)
+* Routes queries to appropriate handlers
+* Escalates negative sentiment queries to human agents
+
+**Concepts:** LangGraph workflows, state management, query routing, sentiment analysis
+
+---
+
 ### 🔹 Market Research Agent
 
 Automates:
@@ -121,6 +136,19 @@ A simpler version to understand:
 * How it plans and responds
 
 **Concepts:** Agent basics, reasoning loops
+
+---
+
+### 🔹 News TL;DR Agent
+
+An agent that:
+
+* Fetches current news articles from NewsAPI
+* Scrapes article content from web pages
+* Generates concise TL;DR summaries
+* Provides relevant news based on user queries
+
+**Concepts:** News APIs, web scraping, async processing, LangGraph workflows, concurrent LLM calls
 
 ---
 
@@ -175,14 +203,16 @@ An AI agent that helps with:
 
 ## 🌱 Learning Path (Recommended)
 
-If you’re a beginner, follow this order:
+If you're a beginner, follow this order:
 
 1. Travel Agent (single agent)
-2. Market Research Agent
-3. Competitor Analysis Agent
-4. Agentic RAG
-5. Multi-Agent Travel Agent (MCP)
-6. n8n Agents
+2. Customer Support Agent
+3. Market Research Agent
+4. Competitor Analysis Agent
+5. News TL;DR Agent
+6. Agentic RAG
+7. Multi-Agent Travel Agent (MCP)
+8. n8n Agents
 
 ---
 
