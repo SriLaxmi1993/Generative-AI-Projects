@@ -3,6 +3,7 @@ langgraph
 langchainhub
 langchain-community
 langchain-google-genai
+langchain-openai
 langchain-qdrant
 langchain-text-splitters
 tiktoken

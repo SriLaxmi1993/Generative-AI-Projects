@@ -6,7 +6,7 @@ from dateutil import parser as date_parser
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from uuid import uuid4
@@ -16,6 +16,26 @@ from pydantic import BaseModel, Field
 from langgraph.graph import END, StateGraph, START
 import json
 import time
+import os
+
+# Debug logging helper (writes NDJSON lines to a fixed path)
+def debug_log(session_id, run_id, hypothesis_id, location, message, data):
+    log_path = "/Users/srilaxmich/Desktop/Generative-AI-Projects/.cursor/debug.log"
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a") as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+    except Exception:
+        # Avoid breaking the app if logging fails
+        pass
 
 st.set_page_config(page_title="Newsletter Pipeline", page_icon="📰")
 st.header(":blue[Multi-Agent Newsletter Pipeline] :green[with LangGraph]")
@@ -34,6 +54,8 @@ if 'qdrant_host' not in st.session_state:
     st.session_state.qdrant_host = ""
 if 'qdrant_api_key' not in st.session_state:
     st.session_state.qdrant_api_key = ""
+if 'openai_api_key' not in st.session_state:
+    st.session_state.openai_api_key = ""
 if 'gemini_api_key' not in st.session_state:
     st.session_state.gemini_api_key = ""
 
@@ -44,16 +66,18 @@ def set_sidebar():
         
         qdrant_host = st.text_input("Enter your Qdrant Host URL:", value=st.session_state.qdrant_host, type="default")
         qdrant_api_key = st.text_input("Enter your Qdrant API key:", value=st.session_state.qdrant_api_key, type="password")
-        gemini_api_key = st.text_input("Enter your Gemini API key:", value=st.session_state.gemini_api_key, type="password")
+        openai_api_key = st.text_input("Enter your OpenAI API key (for embeddings & chat):", value=st.session_state.openai_api_key, type="password")
+        gemini_api_key = st.text_input("Enter your Gemini API key (legacy, optional):", value=st.session_state.gemini_api_key, type="password")
 
         if st.button("Save Configuration"):
-            if qdrant_host and qdrant_api_key and gemini_api_key:
+            if qdrant_host and qdrant_api_key and openai_api_key:
                 st.session_state.qdrant_host = qdrant_host
                 st.session_state.qdrant_api_key = qdrant_api_key
+                st.session_state.openai_api_key = openai_api_key
                 st.session_state.gemini_api_key = gemini_api_key
                 st.success("API keys saved!")
             else:
-                st.warning("Please fill all API fields")
+                st.warning("Please fill Qdrant Host, Qdrant API key, and OpenAI API key")
         
         st.subheader("Pipeline Configuration")
         time_window_days = st.number_input("Time Window (days):", min_value=1, max_value=30, value=14)
@@ -75,7 +99,7 @@ def initialize_components():
     Embeddings are optional - app can work without them."""
     if not all([st.session_state.qdrant_host, 
                st.session_state.qdrant_api_key, 
-               st.session_state.gemini_api_key]):
+               st.session_state.openai_api_key]):
         return None, None, None
 
     embedding_model = None
@@ -101,9 +125,9 @@ def initialize_components():
         embedding_model = None
     else:
         try:
-            embedding_model = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",
-                google_api_key=st.session_state.gemini_api_key
+            embedding_model = OpenAIEmbeddings(
+                model="text-embedding-3-small",
+                openai_api_key=st.session_state.openai_api_key
             )
             st.success("✅ Embedding model initialized")
         except Exception as embed_init_error:
@@ -118,15 +142,29 @@ def initialize_components():
     # Initialize Qdrant collection (only if we have embedding model)
     if embedding_model:
         collection_name = "newsletter_db"
-        # Try to get collection info to check if it exists
+        from qdrant_client.models import Distance, VectorParams
+        embedding_dim = 1536  # OpenAI text-embedding-3-small dimension
+        collection_needs_recreation = False
+
+        # Check existing collection and dimension
         try:
-            client.get_collection(collection_name)
-            st.info("ℹ️ Qdrant collection already exists")
+            existing_collection = client.get_collection(collection_name)
+            existing_dim = existing_collection.config.params.vectors.size
+            if existing_dim != embedding_dim:
+                st.warning(f"⚠️ Existing collection has {existing_dim} dimensions, but embeddings require {embedding_dim}. Recreating collection...")
+                try:
+                    client.delete_collection(collection_name)
+                    st.info("ℹ️ Old collection deleted")
+                    collection_needs_recreation = True
+                except Exception as delete_error:
+                    st.error(f"❌ Failed to delete old collection: {str(delete_error)[:200]}")
+                    collection_needs_recreation = False
+            else:
+                st.info("ℹ️ Qdrant collection already exists with correct dimensions")
         except Exception:
-            # Collection doesn't exist, create it
-            from qdrant_client.models import Distance, VectorParams
-            # Google embedding-001 uses 768 dimensions
-            embedding_dim = 768
+            collection_needs_recreation = True
+
+        if collection_needs_recreation:
             try:
                 client.create_collection(
                     collection_name=collection_name,
@@ -265,6 +303,11 @@ def filter_by_time_window(posts: List[Dict[str, Any]], days: int) -> List[Dict[s
 def fetcher_agent(state: NewsletterState) -> NewsletterState:
     """Fetches posts from newsletter sources."""
     st.info("🔍 Fetching posts from newsletter sources...")
+    fetch_start = time.time()
+    debug_log("debug-session", "pipeline", "F", "app.py:fetcher:start", "fetcher start", {
+        "sources": len(SOURCES_ALLOWLIST),
+        "config": state.get("config", {})
+    })
     config = state.get("config", {})
     time_window = config.get("time_window_days", 14)
     max_items = config.get("max_items_per_source", 10)
@@ -284,10 +327,15 @@ def fetcher_agent(state: NewsletterState) -> NewsletterState:
             filtered_posts = filtered_posts[:max_items]
             all_posts.extend(filtered_posts)
     
-    return {
+    result = {
         **state,
         "raw_posts": all_posts
     }
+    debug_log("debug-session", "pipeline", "F", "app.py:fetcher:end", "fetcher end", {
+        "total_posts": len(all_posts),
+        "elapsed_sec": round(time.time() - fetch_start, 2)
+    })
+    return result
 
 # Agent 2: Analysis Agent (Combined: Metadata + Themes + Ranking)
 class PostMetadata(BaseModel):
@@ -323,21 +371,29 @@ class AnalysisResult(BaseModel):
 def analysis_agent(state: NewsletterState, embedding_model, db) -> NewsletterState:
     """Combined agent: extracts metadata, identifies themes, ranks trends."""
     st.info("🧠 Analyzing posts: extracting metadata, identifying themes, ranking trends...")
+    analysis_start = time.time()
+    debug_log("debug-session", "pipeline", "A", "app.py:analysis:start", "analysis start", {
+        "raw_posts": len(state.get("raw_posts", [])),
+        "use_embeddings": embedding_model is not None and db is not None
+    })
     
     raw_posts = state.get("raw_posts", [])
     if not raw_posts:
-        return {
+        result = {
             **state,
             "extracted_metadata": [],
             "themes": [],
             "ranked_topics": []
         }
+        debug_log("debug-session", "pipeline", "A", "app.py:analysis:end:no_posts", "analysis end (no posts)", {
+            "elapsed_sec": round(time.time() - analysis_start, 2)
+        })
+        return result
     
-    gemini_api_key = st.session_state.gemini_api_key
-    model = ChatGoogleGenerativeAI(
-        api_key=gemini_api_key,
+    model = ChatOpenAI(
+        api_key=st.session_state.openai_api_key,
         temperature=0,
-        model="gemini-2.0-flash"
+        model="gpt-4o-mini"
     )
     
     try:
@@ -470,96 +526,47 @@ def analysis_agent(state: NewsletterState, embedding_model, db) -> NewsletterSta
         ])
         
         # Combined analysis prompt (metadata extraction + theme identification + trend ranking)
-        analysis_prompt = PromptTemplate(
-            template="""You are analyzing newsletter posts to extract metadata, identify themes, and rank trends.
+        analysis_prompt = f"""You are analyzing newsletter posts to extract metadata, identify themes, and rank trends.
 
 Posts to analyze:
-{posts}
+{posts_text}
 
-Tasks:
-1. Extract normalized metadata for each post (title, date, author, summary, url, tags)
-2. Identify common themes and cluster posts by theme
-3. Rank topics by trendiness using: trendiness = recency × cross-source frequency × salience
+Return ONLY a JSON object with this exact structure (no extra text):
+{{
+  "metadata": [{{"title": str, "date": str, "author": str, "summary": str, "url": str, "tags": [str]}}],
+  "themes": [{{"theme": str, "posts": [int], "salience": float}}],
+  "ranked_topics": [{{"topic": str, "trendiness_score": float, "recency": float, "frequency": float, "salience": float, "post_indices": [int]}}]
+}}
 
 Rules:
 - For missing data, write exactly "Data Not Available"
 - Keep tone objective and factual
-- Recency: Calculate based on publication date (more recent = higher score, 0-1)
-- Frequency: Count how many sources mention the topic (normalize to 0-1)
-- Salience: Assess importance/impact (0-1)
-- Trendiness = recency × frequency × salience
-
-Provide complete analysis with metadata, themes, and ranked topics.""",
-            input_variables=["posts"]
-        )
+- Scores in range 0-1
+- post indices are 0-based into the provided posts list
+- Do not include any fields other than the ones specified above
+- Output must be valid JSON"""
         
-        llm_with_analysis = model.with_structured_output(AnalysisResult)
-        chain = analysis_prompt | llm_with_analysis
-        
-        # Perform initial analysis
+        # Perform initial analysis (manual JSON parsing to avoid schema/tool conversion issues)
         try:
-            result = chain.invoke({"posts": posts_text})
-            # Validate result structure
-            if not hasattr(result, 'metadata') or not hasattr(result, 'themes') or not hasattr(result, 'ranked_topics'):
+            raw_response = model.invoke(analysis_prompt)
+            content = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
+            parsed = json.loads(content)
+            metadata_resp = parsed.get("metadata", [])
+            themes_resp = parsed.get("themes", [])
+            ranked_resp = parsed.get("ranked_topics", [])
+            
+            # Basic validation of types
+            if not isinstance(metadata_resp, list) or not isinstance(themes_resp, list) or not isinstance(ranked_resp, list):
                 raise ValueError("Invalid analysis result structure")
         except Exception as analysis_error:
             st.error(f"Failed to perform initial analysis: {str(analysis_error)}")
             raise  # Re-raise to be caught by outer exception handler
         
-        # Refine analysis - use embeddings if available, otherwise skip refinement
-        if use_embeddings and embeddings:
-            try:
-                # Use embeddings for semantic clustering enhancement
-                retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": min(5, len(raw_posts))})
-                
-                # Refine analysis with embedding-based insights
-                analysis_refinement_prompt = PromptTemplate(
-                    template="""Refine the analysis using semantic similarity insights from embeddings.
-
-Initial Analysis:
-Metadata: {metadata}
-Themes: {themes}
-Ranked Topics: {rankings}
-
-Refinement Guidelines:
-- Use semantic similarity to improve theme clustering
-- Adjust trendiness scores based on:
-  * Recency: More recent posts (within last 7 days) = 0.8-1.0, older = 0.3-0.7
-  * Frequency: Topics in 3+ sources = 0.8-1.0, 2 sources = 0.5-0.7, 1 source = 0.2-0.4
-  * Salience: High impact topics = 0.7-1.0, moderate = 0.4-0.6, low = 0.1-0.3
-- Ensure trendiness_score = recency × frequency × salience
-
-Provide refined analysis.""",
-                    input_variables=["metadata", "themes", "rankings"]
-                )
-                
-                # Safely convert to dict
-                try:
-                    metadata_json = json.dumps([m.dict() if hasattr(m, 'dict') else m for m in result.metadata])
-                    themes_json = json.dumps([t.dict() if hasattr(t, 'dict') else t for t in result.themes])
-                    rankings_json = json.dumps([r.dict() if hasattr(r, 'dict') else r for r in result.ranked_topics])
-                except Exception as dict_error:
-                    st.warning(f"⚠️ Error converting to dict: {str(dict_error)}. Skipping refinement.")
-                    refined_result = result
-                else:
-                    refinement_chain = analysis_refinement_prompt | model.with_structured_output(AnalysisResult)
-                    refined_result = refinement_chain.invoke({
-                        "metadata": metadata_json,
-                        "themes": themes_json,
-                        "rankings": rankings_json
-                    })
-            except Exception as refine_error:
-                st.warning(f"⚠️ Could not refine analysis with embeddings: {str(refine_error)}. Using initial analysis.")
-                refined_result = result
-        else:
-            # Skip refinement if embeddings are not available
-            refined_result = result
-        
-        # Sort ranked topics by trendiness score
+        # No refinement step; use parsed JSON directly
         try:
             ranked_topics_sorted = sorted(
-                [r.dict() if hasattr(r, 'dict') else r for r in refined_result.ranked_topics],
-                key=lambda x: x.get("trendiness_score", 0) if isinstance(x, dict) else getattr(x, "trendiness_score", 0),
+                ranked_resp,
+                key=lambda x: x.get("trendiness_score", 0),
                 reverse=True
             )
         except Exception as sort_error:
@@ -573,15 +580,15 @@ Provide refined analysis.""",
             if source_url and source_url not in sources.values():
                 sources[len(sources) + 1] = source_url
         
-        # Safely convert metadata and themes to dict
-        try:
-            extracted_metadata = [m.dict() if hasattr(m, 'dict') else m for m in refined_result.metadata]
-            themes = [t.dict() if hasattr(t, 'dict') else t for t in refined_result.themes]
-        except Exception as convert_error:
-            st.warning(f"⚠️ Error converting results: {str(convert_error)}")
-            extracted_metadata = []
-            themes = []
+        extracted_metadata = metadata_resp if isinstance(metadata_resp, list) else []
+        themes = themes_resp if isinstance(themes_resp, list) else []
         
+        debug_log("debug-session", "pipeline", "A", "app.py:analysis:end", "analysis end", {
+            "metadata_count": len(extracted_metadata),
+            "themes_count": len(themes),
+            "ranked_topics": len(ranked_topics_sorted),
+            "elapsed_sec": round(time.time() - analysis_start, 2)
+        })
         return {
             **state,
             "extracted_metadata": extracted_metadata,
@@ -592,6 +599,10 @@ Provide refined analysis.""",
     except Exception as e:
         st.error(f"Analysis error: {str(e)}")
         st.exception(e)  # Show full traceback for debugging
+        debug_log("debug-session", "pipeline", "A", "app.py:analysis:error", "analysis error", {
+            "error": str(e)[:200],
+            "elapsed_sec": round(time.time() - analysis_start, 2)
+        })
         # Build source mapping even on error
         sources = {}
         for post in raw_posts:
@@ -611,6 +622,11 @@ Provide refined analysis.""",
 def newsletter_generator_agent(state: NewsletterState) -> NewsletterState:
     """Generates formatted newsletter draft with citations."""
     st.info("✍️ Generating newsletter draft...")
+    gen_start = time.time()
+    debug_log("debug-session", "pipeline", "G", "app.py:generator:start", "generator start", {
+        "ranked_topics": len(state.get("ranked_topics", [])),
+        "metadata_count": len(state.get("extracted_metadata", []))
+    })
     
     ranked_topics = state.get("ranked_topics", [])
     extracted_metadata = state.get("extracted_metadata", [])
@@ -625,11 +641,10 @@ def newsletter_generator_agent(state: NewsletterState) -> NewsletterState:
     # Get top trend
     top_topic = ranked_topics[0]
     
-    gemini_api_key = st.session_state.gemini_api_key
-    model = ChatGoogleGenerativeAI(
-        api_key=gemini_api_key,
+    model = ChatOpenAI(
+        api_key=st.session_state.openai_api_key,
         temperature=0,
-        model="gemini-2.0-flash"
+        model="gpt-4o-mini"
     )
     
     # Get posts related to top topic
@@ -690,8 +705,8 @@ def newsletter_generator_agent(state: NewsletterState) -> NewsletterState:
         
         ## Key developments
         
-        - [First development] [{citation}]
-        - [Second development] [{citation}]
+        - [First development] [{{citation}}]
+        - [Second development] [{{citation}}]
         - [Additional developments with citations]
         
         Rules:
@@ -726,13 +741,20 @@ def newsletter_generator_agent(state: NewsletterState) -> NewsletterState:
             sources_section += f"[{cit_num}] {source_url}\n"
         
         final_draft = draft + sources_section
-        
+        debug_log("debug-session", "pipeline", "G", "app.py:generator:end", "generator end", {
+            "elapsed_sec": round(time.time() - gen_start, 2),
+            "draft_length": len(final_draft)
+        })
         return {
             **state,
             "newsletter_draft": final_draft
         }
     except Exception as e:
         st.error(f"Newsletter generation error: {str(e)}")
+        debug_log("debug-session", "pipeline", "G", "app.py:generator:error", "generator error", {
+            "error": str(e)[:200],
+            "elapsed_sec": round(time.time() - gen_start, 2)
+        })
         return {
             **state,
             "newsletter_draft": "# Newsletter\n\nError generating newsletter draft."
@@ -765,7 +787,7 @@ def main():
 
     if not all([st.session_state.qdrant_host, 
                 st.session_state.qdrant_api_key, 
-                st.session_state.gemini_api_key]):
+                st.session_state.openai_api_key]):
         st.warning("Please configure your API keys in the sidebar first")
         return
 
@@ -792,6 +814,10 @@ def main():
         st.write(f"- {source}")
     
     if st.button("🚀 Generate Newsletter", type="primary"):
+        run_start = time.time()
+        debug_log("debug-session", "pipeline", "P", "app.py:pipeline:start", "pipeline start", {
+            "use_embeddings": embedding_model is not None and db is not None
+        })
         initial_state = {
             "raw_posts": [],
             "extracted_metadata": [],
@@ -807,8 +833,25 @@ def main():
         with st.spinner("Running newsletter pipeline..."):
             try:
                 final_state = None
-                for node_name, node_state in graph.stream(initial_state):
+                for update in graph.stream(initial_state):
+                    # Handle different stream output shapes across langgraph versions
+                    if isinstance(update, tuple) and len(update) == 2:
+                        node_name, node_state = update
+                    elif isinstance(update, dict):
+                        node_name = update.get("event") or update.get("node") or update.get("name")
+                        # Heuristic: if newsletter_draft is present, treat as generator
+                        if not node_name and "newsletter_draft" in update:
+                            node_name = "generator"
+                        node_name = node_name or "unknown"
+                        node_state = update.get("state", update)
+                    else:
+                        node_name, node_state = "unknown", update
+
                     final_state = node_state
+                    debug_log("debug-session", "pipeline", "P", "app.py:pipeline:node", "pipeline node", {
+                        "node": node_name,
+                        "elapsed_sec": round(time.time() - run_start, 2)
+                    })
                     # Show progress
                     if node_name == "fetcher":
                         st.info("✅ Posts fetched")
@@ -830,6 +873,10 @@ def main():
                         file_name=f"newsletter_{datetime.now().strftime('%Y%m%d')}.md",
                         mime="text/markdown"
                     )
+                debug_log("debug-session", "pipeline", "P", "app.py:pipeline:end", "pipeline end", {
+                    "has_draft": bool(final_state and final_state.get("newsletter_draft")),
+                    "elapsed_sec": round(time.time() - run_start, 2)
+                })
             except Exception as e:
                 st.error(f"Pipeline error: {str(e)}")
                 st.exception(e)
