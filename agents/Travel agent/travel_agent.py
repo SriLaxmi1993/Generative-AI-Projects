@@ -15,6 +15,16 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 # #region debug logging
 LOG_PATH = "/Users/srilaxmich/Desktop/Generative-AI-Projects/.cursor/debug.log"
+# Function: debug_log
+# Description: Writes structured debug information to a local log file (`debug.log`). 
+#              It captures timestamps, execution location, messages, and associated data payloads in JSON format.
+# Parameters:
+#   - location (str): Identifier for where the log is triggered (e.g., "travel_agent.py:duckduckgo_search").
+#   - message (str): A human-readable description of the event.
+#   - data (dict, optional): Additional context or data payload to log. Defaults to None.
+#   - hypothesis_id (str, optional): Identifier for hypothesis tracking. Defaults to None.
+#   - session_id (str, optional): Identifier for the user session. Defaults to "debug-session".
+#   - run_id (str, optional): Identifier for the specific execution run. Defaults to "run1".
 def debug_log(location, message, data=None, hypothesis_id=None, session_id="debug-session", run_id="run1"):
     try:
         log_entry = {
@@ -33,6 +43,15 @@ def debug_log(location, message, data=None, hypothesis_id=None, session_id="debu
         pass
 # #endregion
 
+# Function: duckduckgo_search
+# Description: Performs a web search using the `duckduckgo_search` library. Enriches top results by fetching 
+#              page content where possible.
+# Parameters:
+#   - query (str): The search query string.
+#   - max_results (int, optional): Maximum number of search results to retrieve. Defaults to 6.
+#   - per_site_timeout (float, optional): Timeout in seconds for fetching individual webpages. Defaults to 8.0.
+# Returns:
+#   - list[dict]: A list of dictionaries containing title, url, and snippet.
 def duckduckgo_search(query: str, max_results: int = 6, per_site_timeout: float = 8.0):
     """Lightweight DuckDuckGo search with optional snippet enrichment."""
     results = []
@@ -69,6 +88,17 @@ def duckduckgo_search(query: str, max_results: int = 6, per_site_timeout: float 
     return enriched
 
 
+# Function: build_research_summary
+# Description: Orchestrates the research phase by generating specific search queries based on user inputs 
+#              and compiling results.
+# Parameters:
+#   - destination (str): The target travel location.
+#   - num_days (int): Duration of the trip.
+#   - travel_style (str): User's preferred style.
+#   - budget_range (str): Financial constraint description.
+#   - interests (list): List of user interests.
+# Returns:
+#   - str: A formatted string of research results or 'No results found.'.
 def build_research_summary(destination: str, num_days: int, travel_style: str, budget_range: str, interests):
     """Generate a concise research summary using DuckDuckGo (no API key)."""
     queries = [
@@ -91,9 +121,25 @@ def build_research_summary(destination: str, num_days: int, travel_style: str, b
 class TimeoutException(Exception):
     pass
 
+# Function: _timeout_handler
+# Description: A signal handler function intended to raise a TimeoutException.
+# Parameters:
+#   - signum: The signal number.
+#   - frame: The current stack frame.
 def _timeout_handler(signum, frame):
     raise TimeoutException("Operation timed out")
 
+# Function: run_agent_with_timeout
+# Description: Executes an AI agent's `run` method strictly within a specified time limit using a ThreadPoolExecutor.
+# Parameters:
+#   - agent (Agent): The agent instance to execute.
+#   - prompt (str): The input prompt for the agent.
+#   - timeout_seconds (int, optional): Maximum allowed execution time. Defaults to 120.
+#   - agent_name (str, optional): Name used for logging. Defaults to "agent".
+# Returns:
+#   - Any: The result object from agent.run().
+# Raises:
+#   - TimeoutError: If execution time exceeds timeout_seconds.
 def run_agent_with_timeout(agent, prompt, timeout_seconds=120, agent_name="agent"):
     """
     Run an agent with timeout protection to prevent hanging.
@@ -187,6 +233,13 @@ def run_agent_with_timeout(agent, prompt, timeout_seconds=120, agent_name="agent
         # #endregion
         raise
 
+# Function: truncate_content
+# Description: Shortens text content to a safe length to prevent exceeding token limits.
+# Parameters:
+#   - content (str): The text string to truncate.
+#   - max_length (int, optional): The character limit. Defaults to 2500.
+# Returns:
+#   - str: The truncated string.
 def truncate_content(content: str, max_length: int = 2500) -> str:
     """Truncate content to avoid token limit issues"""
     if not content or len(content) <= max_length:
@@ -194,6 +247,15 @@ def truncate_content(content: str, max_length: int = 2500) -> str:
     return content[:max_length] + "\n\n[Content truncated due to length...]"
 
 
+# Function: get_weather_info
+# Description: Fetches weather forecasts for a specific destination and date range using the Open-Meteo API.
+#              Includes geocoding and mapping WMO codes to descriptions.
+# Parameters:
+#   - destination (str): Name of the place (used for geocoding).
+#   - start_date (datetime): The starting date of the trip.
+#   - num_days (int): Duration of the trip.
+# Returns:
+#   - list[dict] | None: List of daily weather details or None if failed.
 def get_weather_info(destination: str, start_date: datetime, num_days: int):
     """Get weather forecast for destination using Open-Meteo (free, no API key required)"""
     # #region agent log
@@ -304,6 +366,13 @@ def get_weather_info(destination: str, start_date: datetime, num_days: int):
         return None
 
 
+# Function: generate_ics_content
+# Description: Parses the generated plain-text itinerary to create a downloadable iCalendar (.ics) file.
+# Parameters:
+#   - plan_text (str): The full text of the generated itinerary.
+#   - start_date (datetime, optional): The start date of the trip. Defaults to datetime.today().
+# Returns:
+#   - bytes: The binary content of the .ics file.
 def generate_ics_content(plan_text: str, start_date: datetime = None) -> bytes:
     """Generate an ICS calendar file from a travel itinerary text."""
     cal = Calendar()
