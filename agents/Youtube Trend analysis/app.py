@@ -10,14 +10,15 @@ from youtube_api_scraper import fetch_channel_videos
 from dotenv import load_dotenv
 load_dotenv()
 
-from crewai import Agent, Crew, Process, Task, LLM
+from crewai import Agent, Crew, Process, Task
 from crewai_tools import FileReadTool
+from langchain_openai import ChatOpenAI
 
 docs_tool = FileReadTool()
 
 @st.cache_resource
 def load_llm():
-    llm = LLM(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+    llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
     return llm
 
 # ===========================
@@ -96,7 +97,6 @@ def start_analysis():
     if not os.getenv("YOUTUBE_API_KEY"):
         status_container.error("YOUTUBE_API_KEY not found in environment variables. Please add it to your .env file.")
         return
-    
     # Filter out empty channel URLs
     valid_channels = [ch for ch in st.session_state.youtube_channels if ch and ch.strip()]
     
@@ -290,11 +290,11 @@ if st.session_state.response:
             result = st.session_state.response
             st.markdown("### Generated Analysis")
             st.markdown(result)
-            
-            # Add download button
+
+            download_payload = getattr(result, "raw", None) or str(result)
             st.download_button(
                 label="Download Content",
-                data=result.raw,
+                data=download_payload,
                 file_name=f"youtube_trend_analysis.md",
                 mime="text/markdown"
             )
@@ -303,4 +303,4 @@ if st.session_state.response:
 
 # Footer
 st.markdown("---")
-st.markdown("Built with CrewAI, SerpAPI and Streamlit")
+st.markdown("Built with CrewAI, YouTube Data API v3, and Streamlit")

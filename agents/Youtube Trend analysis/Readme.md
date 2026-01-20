@@ -60,7 +60,18 @@ OPENAI_API_KEY=your_openai_api_key_here
 Install the required Python packages:
 
 ```bash
-pip install streamlit crewai crewai-tools python-dotenv google-api-python-client youtube-transcript-api requests
+pip install streamlit crewai crewai-tools python-dotenv langchain-openai youtube-transcript-api requests pyyaml tqdm
+```
+
+**Note**: Make sure you have compatible versions:
+- `langchain<0.2.0` (required by CrewAI)
+- `langchain-openai<0.2.0` (compatible with CrewAI)
+- `openai<2.0.0` (required by CrewAI)
+
+If you encounter version conflicts, install compatible versions:
+
+```bash
+pip install "langchain<0.2.0" "langchain-openai<0.2.0" "openai<2.0.0"
 ```
 
 ## Usage
@@ -73,7 +84,13 @@ Start the Streamlit application:
 streamlit run app.py
 ```
 
-The application will open in your default web browser at `http://localhost:8501`
+Or specify a custom port to avoid conflicts with other Streamlit apps:
+
+```bash
+streamlit run app.py --server.port 8502
+```
+
+The application will open in your default web browser at `http://localhost:8501` (or the port you specified)
 
 ### How to Use
 
@@ -104,21 +121,34 @@ The application will open in your default web browser at `http://localhost:8501`
 ├── app.py                  # Main Streamlit application
 ├── youtube_api_scraper.py  # YouTube Data API scraper for YouTube videos
 ├── config.yaml            # CrewAI agent and task configuration
+├── .env                   # Environment variables (API keys) - NOT in git
 ├── .env.example           # Environment variables template
 ├── .gitignore             # Git ignore file
-├── Readme.md              # Project documentation
+├── README.md              # Project documentation
+├── TUTORIAL.md            # Comprehensive tutorial guide
 └── transcripts/           # Directory for saved video transcripts (created automatically)
 ```
 
 ## How It Works
 
-1. **Scraping Phase**: Uses YouTube Data API v3 to search and scrape YouTube videos from specified channels within the date range
-2. **Transcript Extraction**: Uses `youtube-transcript-api` to extract formatted transcripts from each video
-3. **File Processing**: Saves transcripts to individual text files in the `transcripts/` directory
-4. **AI Analysis**: 
-   - **Analysis Agent**: Analyzes transcripts for topics, trends, sentiment, and keywords
-   - **Response Synthesizer Agent**: Synthesizes findings into a concise, actionable report
-5. **Report Generation**: Displays and allows download of the final analysis report
+1. **User Input**: User provides YouTube channel URLs and date range via Streamlit UI
+2. **Scraping Phase**: Uses YouTube Data API v3 to search and scrape YouTube videos from specified channels within the date range
+3. **Transcript Extraction**: Uses `youtube-transcript-api` to extract formatted transcripts from each video (or falls back to title/description if unavailable)
+4. **File Processing**: Saves transcripts to individual text files in the `transcripts/` directory
+5. **AI Agent Orchestration**: 
+   - **Analysis Agent**: Uses CrewAI and GPT-4o to analyze transcripts for topics, trends, sentiment, and keywords
+   - **Response Synthesizer Agent**: Synthesizes the detailed analysis into a concise, actionable report
+   - Both agents work sequentially using CrewAI's Process.sequential
+6. **Report Generation**: Displays the final analysis report and provides download functionality
+
+## Key Features
+
+- ✅ **Multi-Agent System**: Two specialized AI agents working together
+- ✅ **Robust Error Handling**: Gracefully handles missing transcripts, API errors, and edge cases
+- ✅ **Flexible Response Handling**: Works with both string responses and CrewAI response objects
+- ✅ **Quick Mode**: Option to skip transcript extraction for faster processing
+- ✅ **Multi-Channel Support**: Analyze multiple channels simultaneously
+- ✅ **Date Range Filtering**: Focus analysis on specific time periods
 
 ## Configuration
 
@@ -126,6 +156,22 @@ The AI agents and their tasks are configured in `config.yaml`. You can customize
 - Agent roles and goals
 - Analysis tasks and expected outputs
 - Agent backstories and behaviors
+
+## Troubleshooting
+
+### Common Issues
+
+- **"No videos found"**: Check date range, channel URL format, or API quota
+- **Import errors**: Ensure compatible package versions (see Installation section)
+- **Port conflicts**: Use `--server.port` flag to specify a different port
+- **API key errors**: Verify `.env` file exists and keys are correctly named
+
+For detailed troubleshooting, see [TUTORIAL.md](TUTORIAL.md).
+
+## Documentation
+
+- **[TUTORIAL.md](TUTORIAL.md)**: Comprehensive guide covering AI agents, architecture, setup, and usage
+- **[README.md](README.md)**: This file - quick start and overview
 
 ## Contributing
 
