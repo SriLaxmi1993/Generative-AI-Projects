@@ -65,32 +65,10 @@ class AnalysisAgent:
         """
         if not properties:
             return []
-        
-        try:
-            # Prepare property IDs and data
-            property_ids = [p["id"] for p in properties]
-            property_data = json.dumps(properties, indent=2)
-            requirements_str = json.dumps(requirements, indent=2)
-            
-            # Execute agent
-            result = self.executor.invoke({
-                "property_ids": property_ids,
-                "property_data": property_data,
-                "requirements": requirements_str
-            })
-            
-            # Merge analysis with original property data
-            analyzed_properties = self._merge_analysis(properties, result, requirements)
-            
-            # Sort by score
-            analyzed_properties.sort(key=lambda x: x.get("score", 0), reverse=True)
-            
-            return analyzed_properties[:10]
-            
-        except Exception as e:
-            print(f"Error analyzing properties: {e}")
-            # Return properties with basic scores if analysis fails
-            return self._fallback_analysis(properties, requirements)
+
+        # Deterministic fallback analysis avoids token overflows from large listing payloads.
+        # This keeps the agent responsive and still ranks options with consistent scoring.
+        return self._fallback_analysis(properties, requirements)
     
     def _merge_analysis(
         self,

@@ -82,13 +82,25 @@ class ParserAgent:
         if requirements.get("checkout_date"):
             requirements["checkout_date"] = self._normalize_date(requirements["checkout_date"])
         
-        # Ensure guests is a dict
+        # Keep parsed travel dates in a usable future window.
+        requirements = self._normalize_trip_dates(requirements)
+        
+        # Ensure guests is a dict with proper integer values
         if not isinstance(requirements.get("guests"), dict):
             requirements["guests"] = {
                 "adults": 1,
                 "children": 0,
                 "infants": 0,
                 "pets": 0
+            }
+        else:
+            # Normalize None values to integers
+            guests = requirements["guests"]
+            requirements["guests"] = {
+                "adults": guests.get("adults") if guests.get("adults") is not None else 1,
+                "children": guests.get("children") if guests.get("children") is not None else 0,
+                "infants": guests.get("infants") if guests.get("infants") is not None else 0,
+                "pets": guests.get("pets") if guests.get("pets") is not None else 0
             }
         
         # Ensure budget is a dict
@@ -119,6 +131,44 @@ class ParserAgent:
             
         except Exception:
             return date_str
+
+    def _normalize_trip_dates(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure checkin/checkout are present and not stale (e.g., past year)."""
+        checkin = requirements.get("checkin_date")
+        checkout = requirements.get("checkout_date")
+
+        def parse_ymd(value: str):
+            try:
+                return datetime.strptime(value, "%Y-%m-%d")
+            except Exception:
+                return None
+
+        now = datetime.now()
+        ci = parse_ymd(checkin) if checkin else None
+        co = parse_ymd(checkout) if checkout else None
+
+        # If check-in is parsed far in the past, roll to current year, then next year if still past.
+        if ci and ci.date() < now.date():
+            try:
+                ci = ci.replace(year=now.year)
+            except ValueError:
+                # Handle leap-day edge case safely.
+                ci = ci.replace(year=now.year, day=min(ci.day, 28))
+            if ci.date() < now.date():
+                ci = ci.replace(year=now.year + 1)
+            requirements["checkin_date"] = ci.strftime("%Y-%m-%d")
+
+        # If checkout missing/invalid, default to one night after checkin.
+        if (not co) and ci:
+            co = ci + timedelta(days=1)
+            requirements["checkout_date"] = co.strftime("%Y-%m-%d")
+
+        # If checkout is not after checkin, force one-night stay.
+        if ci and co and co <= ci:
+            co = ci + timedelta(days=1)
+            requirements["checkout_date"] = co.strftime("%Y-%m-%d")
+
+        return requirements
     
     def _get_default_requirements(self) -> Dict[str, Any]:
         """

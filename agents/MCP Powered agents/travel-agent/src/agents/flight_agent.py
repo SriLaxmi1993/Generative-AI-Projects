@@ -9,7 +9,11 @@ from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 
 from ..prompts.agent_prompts import FLIGHT_AGENT_PROMPT
-from ..tools.flight_tools import future_flights_schedule_tool, flights_with_airline_tool
+from ..tools.flight_tools import (
+    future_flights_schedule_tool,
+    flights_with_airline_tool,
+    flights_with_airline_wrapper,
+)
 
 # Load environment variables
 load_dotenv()
@@ -106,16 +110,43 @@ class FlightAgent:
                 return []
             
             # Execute agent
-            result = self.executor.invoke({
-                "origin_airport": origin_airport,
-                "destination_airport": dest_airport,
-                "date": date
-            })
-            
-            # Extract flights from result
-            flights = self._extract_flights(result)
-            
-            return flights
+            try:
+                result = self.executor.invoke({
+                    "origin_airport": origin_airport,
+                    "destination_airport": dest_airport,
+                    "date": date
+                })
+                
+                # Extract flights from result
+                flights = self._extract_flights(result)
+                if flights:
+                    return flights
+
+                # Fallback: if schedule endpoint fails/rate-limits, use airline endpoint.
+                print("⚠️  No schedule flights found, trying airline-based fallback...")
+                fallback_flights = self._fallback_airline_search(origin, destination)
+                if fallback_flights:
+                    print(f"✓ Fallback found {len(fallback_flights)} flight options")
+                    return fallback_flights
+                
+                return []
+                
+            except Exception as agent_error:
+                error_msg = str(agent_error)
+                # Check for API rate limiting or bad request errors
+                if "429" in error_msg or "rate limit" in error_msg.lower():
+                    print("⚠️  Flight API rate limit reached. Please try again later.")
+                elif "400" in error_msg or "bad request" in error_msg.lower():
+                    print("⚠️  Flight API request error. The date or airport codes may be invalid.")
+                else:
+                    print(f"Error searching flights: {agent_error}")
+
+                # Try fallback even when agent path errors out.
+                fallback_flights = self._fallback_airline_search(origin, destination)
+                if fallback_flights:
+                    print(f"✓ Fallback found {len(fallback_flights)} flight options")
+                    return fallback_flights
+                return []
             
         except Exception as e:
             print(f"Error searching flights: {e}")
@@ -147,25 +178,60 @@ class FlightAgent:
         Extract flight data from agent result.
         """
         flights = []
-        
+
         try:
-            # Get intermediate steps
             intermediate_steps = agent_result.get("intermediate_steps", [])
-            
             for action, observation in intermediate_steps:
-                if action.tool == "future_flights_schedule":
-                    # Parse the observation
-                    try:
-                        flight_data = json.loads(observation)
-                        
-                        if isinstance(flight_data, list):
-                            for flight in flight_data:
-                                formatted_flight = self._format_flight(flight)
-                                if formatted_flight:
-                                    flights.append(formatted_flight)
-                        
-                    except json.JSONDecodeError:
+                if action.tool != "future_flights_schedule":
+                    continue
+
+                try:
+                    parsed = observation
+                    if isinstance(observation, str):
+                        try:
+                            parsed = json.loads(observation)
+                        except json.JSONDecodeError:
+                            continue
+
+                    payload = parsed
+                    if isinstance(parsed, dict) and "content" in parsed:
+                        content = parsed.get("content", [])
+                        if isinstance(content, list) and content and isinstance(content[0], dict):
+                            text = content[0].get("text", "")
+                            if text:
+                                try:
+                                    payload = json.loads(text)
+                                except json.JSONDecodeError:
+                                    continue
+                    elif isinstance(parsed, dict) and "structuredContent" in parsed:
+                        result_text = parsed.get("structuredContent", {}).get("result", "")
+                        if result_text:
+                            try:
+                                payload = json.loads(result_text)
+                            except json.JSONDecodeError:
+                                continue
+
+                    # Handle API error envelopes without false positives on "isError": false
+                    if isinstance(payload, dict) and payload.get("ok") is False:
+                        print(f"⚠️  Flight API error: {payload.get('error', 'unknown error')}")
                         continue
+
+                    flight_list = []
+                    if isinstance(payload, list):
+                        flight_list = payload
+                    elif isinstance(payload, dict):
+                        if isinstance(payload.get("data"), list):
+                            flight_list = payload["data"]
+                        elif isinstance(payload.get("flights"), list):
+                            flight_list = payload["flights"]
+
+                    for flight in flight_list:
+                        formatted_flight = self._format_flight(flight)
+                        if formatted_flight:
+                            flights.append(formatted_flight)
+                except Exception as e:
+                    print(f"Error parsing flight data: {e}")
+                    continue
             
             # Remove duplicates and limit to 10
             seen = set()
@@ -180,6 +246,8 @@ class FlightAgent:
             
         except Exception as e:
             print(f"Error extracting flights: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def _format_flight(self, raw_flight: Dict[str, Any]) -> Dict[str, Any]:
@@ -190,10 +258,14 @@ class FlightAgent:
             return {
                 "airline": raw_flight.get("airline", "").title(),
                 "flight_number": raw_flight.get("flight_number", "").upper(),
-                "departure_time": raw_flight.get("departure_scheduled_time", ""),
-                "arrival_time": raw_flight.get("arrival_scheduled_time", ""),
-                "departure_airport": raw_flight.get("departure_airport_code", "").upper(),
-                "arrival_airport": raw_flight.get("arrival_airport_code", "").upper(),
+                "departure_time": raw_flight.get("departure_scheduled_time", raw_flight.get("departure_time", "")),
+                "arrival_time": raw_flight.get("arrival_scheduled_time", raw_flight.get("arrival_time", "")),
+                "departure_airport": (
+                    raw_flight.get("departure_airport_code", "") or raw_flight.get("departure_airport", "")
+                ).upper(),
+                "arrival_airport": (
+                    raw_flight.get("arrival_airport_code", "") or raw_flight.get("arrival_airport", "")
+                ).upper(),
                 "arrival_terminal": raw_flight.get("arrival_terminal", ""),
                 "aircraft": raw_flight.get("aircraft", "").title()
             }
@@ -201,6 +273,81 @@ class FlightAgent:
         except Exception as e:
             print(f"Error formatting flight: {e}")
             return None
+
+    def _fallback_airline_search(self, origin: str, destination: str) -> List[Dict[str, Any]]:
+        """
+        Fallback search using flights_with_airline when schedule endpoint fails.
+        """
+        candidate_airlines = ["Emirates", "Air India", "IndiGo", "British Airways"]
+        origin_l = (origin or "").lower()
+        destination_l = (destination or "").lower()
+
+        # Light heuristic to prioritize likely carriers.
+        if "dubai" in destination_l or "dxb" in destination_l:
+            candidate_airlines = ["Emirates", "Air India", "IndiGo"]
+
+        flights: List[Dict[str, Any]] = []
+        for airline in candidate_airlines:
+            try:
+                raw = flights_with_airline_wrapper(airline_name=airline, number_of_flights=8)
+                parsed = json.loads(raw)
+
+                items = []
+                if isinstance(parsed, dict) and "content" in parsed:
+                    content = parsed.get("content", [])
+                    if isinstance(content, list) and content and isinstance(content[0], dict):
+                        text = content[0].get("text", "")
+                        if text:
+                            try:
+                                items = json.loads(text)
+                            except json.JSONDecodeError:
+                                items = []
+                elif isinstance(parsed, list):
+                    items = parsed
+
+                for item in items:
+                    dep_airport = str(item.get("departure_airport", ""))
+                    arr_airport = str(item.get("arrival_airport", ""))
+                    route_blob = f"{dep_airport} {arr_airport}".lower()
+
+                    # Keep only likely route matches to avoid unrelated flights.
+                    origin_match = (origin_l and origin_l in route_blob)
+                    destination_match = (destination_l and destination_l in route_blob)
+                    dxb_hint = ("dubai" in destination_l or "dxb" in destination_l) and (
+                        "dubai" in route_blob or "dxb" in route_blob
+                    )
+                    if (origin_match and destination_match) or (origin_match and dxb_hint):
+                        flights.append(self._format_fallback_flight(item))
+
+                if len(flights) >= 8:
+                    break
+            except Exception:
+                continue
+
+        # Dedupe and trim
+        unique = []
+        seen = set()
+        for f in flights:
+            if not f:
+                continue
+            key = f"{f.get('airline','')}_{f.get('flight_number','')}_{f.get('departure_time','')}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(f)
+        return unique[:10]
+
+    def _format_fallback_flight(self, raw_flight: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize flights_with_airline response shape to app's flight schema."""
+        return {
+            "airline": raw_flight.get("airline", ""),
+            "flight_number": str(raw_flight.get("flight_number", "")).upper(),
+            "departure_time": raw_flight.get("departure_time", ""),
+            "arrival_time": raw_flight.get("arrival_time", ""),
+            "departure_airport": raw_flight.get("departure_airport", ""),
+            "arrival_airport": raw_flight.get("arrival_airport", ""),
+            "arrival_terminal": raw_flight.get("arrival_terminal", ""),
+            "aircraft": raw_flight.get("aircraft", ""),
+        }
 
 
 def create_flight_agent(model_name: str = "gpt-4") -> FlightAgent:

@@ -2,7 +2,7 @@
 Aviationstack MCP Tool Wrappers for LangChain
 """
 from langchain.tools import StructuredTool
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from typing import Optional
 from .mcp_connector import get_mcp_connector
 
@@ -20,6 +20,16 @@ class FlightsWithAirlineInput(BaseModel):
     """Input schema for flights by airline."""
     airline_name: str = Field(description="Airline name (e.g., 'indigo', 'air india', 'emirates')")
     number_of_flights: int = Field(default=10, description="Number of flights to return")
+
+
+AIRLINE_IATA_TO_NAME = {
+    "6E": "IndiGo",
+    "AI": "Air India",
+    "EK": "Emirates",
+    "BA": "British Airways",
+    "LH": "Lufthansa",
+    "QR": "Qatar Airways",
+}
 
 
 def future_flights_schedule_wrapper(
@@ -44,27 +54,49 @@ def future_flights_schedule_wrapper(
     """
     connector = get_mcp_connector()
     
+    airline_name = AIRLINE_IATA_TO_NAME.get(airline_iata.upper(), airline_iata)
     arguments = {
         "airport_iata_code": airport_code,
         "schedule_type": schedule_type,
-        "airline_iata": airline_iata,
-        "date": date,
-        "number_of_flights": number_of_flights
+        "airline_name": airline_name,
+        "number_of_flights": number_of_flights,
     }
     
     try:
+        # Prefer the current Aviationstack MCP method signature.
         result = connector.call_mcp_tool(
             server_name="Aviationstack MCP",
-            tool_name="future_flights_arrival_departure_schedule",
+            tool_name="flight_arrival_departure_schedule",
             arguments=arguments
         )
         
         import json
         return json.dumps(result, indent=2)
         
-    except Exception as e:
-        import json
-        return json.dumps({"error": str(e), "search_params": arguments})
+    except Exception as primary_error:
+        # Backward-compatible fallback for older Aviationstack MCP servers.
+        try:
+            legacy_arguments = {
+                "airport_iata_code": airport_code,
+                "schedule_type": schedule_type,
+                "airline_iata": airline_iata,
+                "date": date,
+                "number_of_flights": number_of_flights,
+            }
+            legacy_result = connector.call_mcp_tool(
+                server_name="Aviationstack MCP",
+                tool_name="future_flights_arrival_departure_schedule",
+                arguments=legacy_arguments
+            )
+            import json
+            return json.dumps(legacy_result, indent=2)
+        except Exception as legacy_error:
+            import json
+            return json.dumps({
+                "error": str(primary_error),
+                "legacy_error": str(legacy_error),
+                "search_params": arguments
+            })
 
 
 def flights_with_airline_wrapper(

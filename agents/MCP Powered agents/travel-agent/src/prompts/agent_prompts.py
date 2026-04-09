@@ -13,11 +13,11 @@ Your task is to parse the user's travel request and return a JSON object with th
 - origin: string or null (where they're flying from, if mentioned)
 - checkin_date: string in YYYY-MM-DD format
 - checkout_date: string in YYYY-MM-DD format  
-- guests: object with {adults: int, children: int, infants: int, pets: int}
+- guests: object with {{adults: int, children: int, infants: int, pets: int}}
 - required_amenities: array of strings (wifi, kitchen, parking, pool, etc.)
 - preferences: array of strings (quiet area, nature views, near beach, etc.)
 - deal_breakers: array of strings (no smoking, must be pet-friendly, etc.)
-- budget: object with {min: int or null, max: int or null, currency: string}
+- budget: object with {{min: int or null, max: int or null, currency: string}}
 
 Be intelligent about parsing dates. If the user says "Dec 25" without a year, infer the appropriate year.
 Convert relative dates like "next week" to actual dates based on today's date.

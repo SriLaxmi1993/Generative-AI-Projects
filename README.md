@@ -54,6 +54,7 @@ Generative-AI-Projects/
 │   ├── MCP Powered agents/
 │   │   └── travel-agent/
 │   ├── News TL;DR agent/
+ │   ├── Research Team AutoGen/
 │   ├── Travel agent/
 │   ├── Youtube Trend analysis/
 │   ├── n8n agents/
@@ -125,6 +126,20 @@ A **multi-agent system** that:
 
 **Concepts:**
 Multi-agent systems, MCP, orchestration, tool calling
+
+---
+
+### 🔹 Research Team AutoGen (Multi-Agent Group Chat)
+
+A role-based **AutoGen multi-agent system** that:
+
+* Uses an Admin, Planner, Developer, Executor, and QA agent
+* Controls collaboration with explicit speaker transition rules
+* Supports reproducible research-style workflows
+* Visualizes agent interaction flow as a graph
+
+**Concepts:**
+AutoGen group chat, multi-agent governance, role prompts, tool execution, QA loops
 
 ---
 
@@ -212,7 +227,8 @@ If you're a beginner, follow this order:
 5. News TL;DR Agent
 6. Agentic RAG
 7. Multi-Agent Travel Agent (MCP)
-8. n8n Agents
+8. Research Team AutoGen (Multi-Agent Group Chat)
+9. n8n Agents
 
 ---
 

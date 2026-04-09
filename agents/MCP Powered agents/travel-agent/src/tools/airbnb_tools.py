@@ -2,7 +2,7 @@
 Airbnb MCP Tool Wrappers for LangChain
 """
 from langchain.tools import StructuredTool
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from typing import Optional, Dict, Any
 from .mcp_connector import get_mcp_connector
 

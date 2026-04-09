@@ -128,7 +128,10 @@ class MCPConnector:
         """
         Call MCP tool using the Model Context Protocol over stdio.
         
-        This is a simplified implementation. In production, use the official MCP Python SDK.
+        NOTE: MCP tools are designed to work through Cursor's AI assistant, not as standalone subprocess calls.
+        This implementation is a simplified attempt and may not work correctly outside of Cursor's environment.
+        
+        For proper MCP tool usage, use this agent through Cursor's AI assistant where MCP servers are managed.
         """
         import os
         
@@ -156,7 +159,8 @@ class MCPConnector:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=proc_env,
-                text=True
+                text=True,
+                bufsize=1  # Line buffered
             )
             
             # Send initialization handshake
@@ -177,25 +181,55 @@ class MCPConnector:
             process.stdin.write(json.dumps(init_request) + "\n")
             process.stdin.flush()
             
-            # Read initialization response (skip for now, simplified)
+            # Read initialization response
+            init_response_line = process.stdout.readline()
+            if init_response_line:
+                try:
+                    init_response = json.loads(init_response_line)
+                    # Check if initialization was successful
+                    if "error" in init_response:
+                        raise RuntimeError(f"MCP initialization error: {init_response['error']}")
+                except json.JSONDecodeError:
+                    # If we can't parse init response, continue anyway
+                    pass
             
             # Send the actual tool call
             process.stdin.write(json.dumps(request) + "\n")
             process.stdin.flush()
             
-            # Read response
-            response_line = process.stdout.readline()
+            # Read multiple lines until we get the actual tool response
+            # MCP servers may send multiple messages
+            response = None
+            for _ in range(10):  # Try reading up to 10 lines
+                response_line = process.stdout.readline()
+                if not response_line:
+                    break
+                try:
+                    parsed = json.loads(response_line)
+                    # Look for the response with matching ID
+                    if parsed.get("id") == 1:
+                        response = parsed
+                        break
+                    # If it's an error, raise it
+                    if "error" in parsed:
+                        raise RuntimeError(f"MCP tool error: {parsed['error']}")
+                except json.JSONDecodeError:
+                    continue
             
-            if not response_line:
+            if not response:
                 stderr = process.stderr.read()
-                raise RuntimeError(f"No response from MCP server. Error: {stderr}")
-            
-            response = json.loads(response_line)
+                raise RuntimeError(f"No valid response from MCP server. Error: {stderr}")
             
             # Clean up
-            process.stdin.close()
-            process.terminate()
-            process.wait(timeout=5)
+            try:
+                process.stdin.close()
+                process.terminate()
+                process.wait(timeout=5)
+            except:
+                try:
+                    process.kill()
+                except:
+                    pass
             
             # Check for errors
             if "error" in response:
@@ -206,7 +240,10 @@ class MCPConnector:
             
         except subprocess.TimeoutExpired:
             if 'process' in locals():
-                process.kill()
+                try:
+                    process.kill()
+                except:
+                    pass
             raise RuntimeError(f"MCP server timed out")
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Invalid JSON response from MCP server: {e}")
