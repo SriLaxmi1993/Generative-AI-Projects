@@ -1,4 +1,4 @@
-# Shopping Agent Tutorial (Substack-ready)
+# Shopping Agent Tutorial 
 
 Shopping Agent is an **agentic shopping assistant** built with **LangGraph** that can search the web, extract product options into a structured format, compare them, choose a best pick, and optionally share a YouTube review link + email the recommendation.
 
