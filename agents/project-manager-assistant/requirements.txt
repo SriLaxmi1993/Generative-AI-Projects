@@ -1,0 +1,9 @@
+langchain
+langgraph
+langchain-openai
+pandas
+plotly
+networkx
+pyvis
+openai
+python-dotenv

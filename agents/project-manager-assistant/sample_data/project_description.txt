@@ -1,0 +1,3 @@
+Our company plans to launch a customer support chatbot that provides 24/7 help and product guidance.
+The chatbot should integrate with our website, support common FAQs, and route complex questions to human agents.
+The goal is to release an MVP within 8 weeks with clear ownership, realistic scheduling, and low execution risk.
